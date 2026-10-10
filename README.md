@@ -95,7 +95,7 @@ flowchart TB
 ## Quick Start
 
 ### Prerequisites
-- Linux host with Docker 28+ and Compose v2 plugin
+- Linux host with Docker 28.1+ and the Compose v2 plugin
 - WireGuard kernel module loaded (`sudo modprobe wireguard`)
 - Python 3.12+ and `make`
 
