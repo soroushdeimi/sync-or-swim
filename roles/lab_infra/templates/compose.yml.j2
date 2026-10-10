@@ -21,6 +21,8 @@ services:
     restart: unless-stopped
     cap_add:
       - NET_ADMIN
+      # FRR's zebra and bgpd refuse to start without it
+      - SYS_ADMIN
     sysctls:
 {%   for key, value in lab_sysctls.items() %}
       {{ key }}: "{{ value }}"
