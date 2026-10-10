@@ -1,3 +1,4 @@
+import datetime
 import subprocess
 import time
 
@@ -89,14 +90,28 @@ def test_restart_restores_state():
     else:
         pytest.fail("mysql-1 sidecars did not come back after the node restarted")
 
-    # leave the lab as we found it: the primary is back and the replica reconnected
+    # leave the lab as we found it: the healer restarts mysql-1-db one by one with the
+    # other sidecars, so wait for a db that started after the node, then for replication
+    node_started = started_at("mysql-1")
     deadline = time.time() + 120
     while time.time() < deadline:
-        health = subprocess.run(["docker", "inspect", "-f", "{{.State.Health.Status}}", "mysql-1-db"], capture_output=True, text=True).stdout.strip()
-        if health == "healthy" and replica_io_running():
+        db_restarted = started_at("mysql-1-db") > node_started
+        healthy = inspect("mysql-1-db", "{{.State.Health.Status}}") == "healthy"
+        if db_restarted and healthy and replica_io_running():
             return
         time.sleep(2)
-    pytest.fail("replication did not recover after mysql-1 restarted")
+    pytest.fail("mysql-1-db or replication did not recover after mysql-1 restarted")
+
+
+def inspect(container, fmt):
+    return subprocess.run(["docker", "inspect", "-f", fmt, container], capture_output=True, text=True).stdout.strip()
+
+
+def started_at(container):
+    # docker trims trailing zeros from the fraction, so parse instead of comparing strings
+    stamp = inspect(container, "{{.State.StartedAt}}").rstrip("Z")
+    whole, _, frac = stamp.partition(".")
+    return datetime.datetime.fromisoformat(whole).timestamp() + float(f"0.{frac or 0}")
 
 
 def replica_io_running():
