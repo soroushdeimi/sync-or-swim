@@ -10,10 +10,9 @@ usage() { echo "usage: $0 {tag|build|save <file>|load <file>}" >&2; exit 1; }
 
 tag() {
   # ask Ansible so the tag can never drift from inventory's node_image
-  ANSIBLE_LOAD_CALLBACK_PLUGINS=1 ANSIBLE_STDOUT_CALLBACK=json \
-    "$ansible" localhost -m ansible.builtin.debug -a 'msg={{ node_image }}' \
-    -e "lab_root=$root" \
-    | python3 -c 'import json, sys; print(json.load(sys.stdin)["plays"][0]["tasks"][0]["hosts"]["localhost"]["msg"])'
+  ANSIBLE_CALLBACK_RESULT_FORMAT=json \
+    "$ansible" localhost -m ansible.builtin.debug -a 'var=node_image' -e "lab_root=$root" \
+    | python3 -c 'import json, sys; print(json.loads(sys.stdin.read().split("=>", 1)[1])["node_image"])'
 }
 
 build() {
@@ -29,7 +28,7 @@ save() {
 }
 
 load() {
-  [ $# -eq 1 ] && [ -f "$1" ] || usage
+  if [ $# -ne 1 ] || [ ! -f "$1" ]; then usage; fi
   local want got
   want=$(tag)
   got=$(gzip -dc "$1" | docker load | sed -n 's/^Loaded image: //p' | head -n1)
