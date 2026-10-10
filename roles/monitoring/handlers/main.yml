@@ -1,0 +1,11 @@
+---
+- name: Reload prometheus
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:9090/-/reload"
+    method: POST
+    status_code: 200
+
+- name: Reload alertmanager
+  community.docker.docker_container_exec:
+    container: "{{ lab_project }}-alertmanager"
+    command: kill -HUP 1
