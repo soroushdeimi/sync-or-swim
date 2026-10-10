@@ -53,3 +53,11 @@ make down   # remove everything
 - **Management is separated from the data plane.** The default route uses `mgmt0` (`gw_priority`). The transit networks are `internal` and carry only tunnel traffic.
 
 The problem log from building the lab is in [docs/notes.md](docs/notes.md).
+
+## CI and releases
+
+In CI, the node image is built once in the `image` job and saved as `dist/node-image.tar.gz`.
+The `lab` job downloads this artifact, loads it via `make image-load`, and reuses it across test runs.
+On tag pushes (`v*`), the `release` workflow creates a GitHub release with the image tarball and sha256 checksum.
+It also publishes the image to GHCR under the release tag and content hash.
+To run a released image locally without rebuilding, download `node-image.tar.gz` into `dist/` and run `make image-load`.
