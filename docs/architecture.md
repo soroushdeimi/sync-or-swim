@@ -152,3 +152,14 @@ When the primary relay container `wg-1` crashes or stops, failover occurs throug
    - BFD sessions establish, followed by BGP peering.
    - `wg-1` re-advertises peer routes with `LOCAL_PREF 200`.
    - `mysql-1` and `mysql-2` switch FIB next-hops back to `wg-via1` (manual test measured failback in 1.6 s after container startup, or 6.7 s including container boot).
+
+---
+
+## Troubleshooting
+
+The automated troubleshooting tool `scripts/diagnose.py` checks the stack bottom-up: L1 underlay ping, L2 WireGuard tunnels, L3 BFD/BGP control plane, L4 data plane route and source rewrite, L5 MySQL port 3306 transport connectivity, and L6 replica replication status:
+```bash
+python3 scripts/diagnose.py [--node mysql-1] [--json]
+```
+Exit codes indicate stack state: `0` (healthy), `1` (degraded: failover active, service healthy), or `2` (broken).
+When critical alerts fire, Alertmanager triggers the autodiagnose webhook service on `172.31.100.36:9095`, which executes `diagnose.py --json` and logs root-cause verdicts directly to Loki.

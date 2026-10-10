@@ -1,0 +1,6 @@
+---
+- name: Automated diagnostics webhook
+  hosts: lab
+  gather_facts: false
+  roles:
+    - role: autodiagnose

@@ -1,0 +1,7 @@
+---
+autodiagnose_context: "{{ lab_root }}/docker/autodiagnose"
+autodiagnose_image: >-
+  {{ lab_project }}/autodiagnose:{{ (lookup('file', autodiagnose_context ~ '/Dockerfile')
+      ~ lookup('file', autodiagnose_context ~ '/webhook.py')) | hash('sha1') | truncate(12, True, '') }}
+autodiagnose_build_dir: "{{ lab_build_dir }}/autodiagnose"
+autodiagnose_port: 9095
