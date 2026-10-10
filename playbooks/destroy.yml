@@ -2,8 +2,6 @@
 - name: Tear the lab down
   hosts: lab
   gather_facts: false
-  vars:
-    lab_build_dir: "{{ playbook_dir }}/../build"
   tasks:
     - name: Remove containers and networks
       community.docker.docker_compose_v2:

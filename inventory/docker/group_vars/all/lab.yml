@@ -2,6 +2,23 @@
 # Compose project name; also the prefix for images.
 lab_project: sync-or-swim
 
+# Repository root and the git-ignored output directory shared by all roles.
+lab_root: "{{ (playbook_dir ~ '/..') | realpath }}"
+lab_build_dir: "{{ lab_root }}/build"
+# Per-node runtime dirs bind-mounted into containers: run/<host>/frr (FRR vty
+# sockets, shared with frr_exporter) and run/<host>/textfile (node_exporter).
+lab_run_dir: "{{ lab_build_dir }}/run"
+lab_mgmt_network: "{{ lab_project }}_mgmt"
+
+# The node image tag is a hash of its build context, so editing the Dockerfile
+# or scripts produces a new tag, a rebuild and a recreate, while an unchanged
+# context keeps runs idempotent. Sidecars reuse this image.
+node_image_context: "{{ lab_root }}/docker/node"
+node_image: >-
+  {{ lab_project }}/node:{{ (lookup('file', node_image_context ~ '/Dockerfile')
+      ~ lookup('file', node_image_context ~ '/entrypoint.sh')
+      ~ lookup('file', node_image_context ~ '/sos-apply')) | hash('sha1') | truncate(12, True, '') }}
+
 # Underlay networks. transit-a and transit-b are the two independent
 # "ISP paths"; mgmt carries monitoring and logs, never replication traffic.
 lab_networks:
@@ -28,3 +45,22 @@ lab_sysctls:
 
 # Header for rendered files.
 ansible_managed: Managed by Ansible (sync-or-swim); local edits will be overwritten.
+
+# Fixed mgmt addresses for the monitoring and logging stacks.
+mgmt_services:
+  prometheus: 172.31.100.30
+  alertmanager: 172.31.100.31
+  grafana: 172.31.100.32
+  loki: 172.31.100.33
+  alloy: 172.31.100.34
+  mailpit: 172.31.100.35
+  alert-webhook: 172.31.100.36
+
+# Exporters run as sidecars inside each node's network namespace and listen
+# on the node's mgmt address.
+exporter_ports:
+  node: 9100
+  blackbox: 9115
+  frr: 9342
+  wireguard: 9586
+  mysqld: 9104

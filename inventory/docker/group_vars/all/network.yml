@@ -1,0 +1,38 @@
+---
+# Routing design shared by the wireguard, frr, mysql, exporters and logging roles.
+
+# active_backup: wg-1 is preferred (local-preference), wg-2 is the backup.
+# ecmp: both relays carry traffic (maximum-paths 2, multipath-relax).
+routing_mode: active_backup
+primary_relay: wg-1
+
+bfd_receive_interval: 300
+bfd_transmit_interval: 300
+bfd_detect_multiplier: 3
+
+wg_mtu: 1420
+wg_keepalive: 25
+
+# One entry per WireGuard tunnel: "a" is the MySQL end, "b" the relay end.
+# An end's underlay endpoint is hostvars[end.host].lab_links[tunnel.underlay].
+wg_tunnels:
+  - id: m1-r1
+    underlay: transit-a
+    a: {host: mysql-1, ifname: wg-via1, ip: 10.10.11.0, port: 51821}
+    b: {host: wg-1, ifname: wg-to-m1, ip: 10.10.11.1, port: 51821}
+  - id: m2-r1
+    underlay: transit-a
+    a: {host: mysql-2, ifname: wg-via1, ip: 10.10.12.0, port: 51821}
+    b: {host: wg-1, ifname: wg-to-m2, ip: 10.10.12.1, port: 51822}
+  - id: m1-r2
+    underlay: transit-b
+    a: {host: mysql-1, ifname: wg-via2, ip: 10.10.21.0, port: 51822}
+    b: {host: wg-2, ifname: wg-to-m1, ip: 10.10.21.1, port: 51821}
+  - id: m2-r2
+    underlay: transit-b
+    a: {host: mysql-2, ifname: wg-via2, ip: 10.10.22.0, port: 51822}
+    b: {host: wg-2, ifname: wg-to-m2, ip: 10.10.22.1, port: 51822}
+
+mysql_primary: mysql-1
+mysql_replica: mysql-2
+mysql_image: mysql:8.4

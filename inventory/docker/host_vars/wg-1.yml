@@ -1,6 +1,7 @@
 ---
 site: path-a
 loopback_ip: 10.255.0.11
+bgp_asn: 65101
 lab_links:
   transit-a: 172.31.1.21
   mgmt: 172.31.100.21

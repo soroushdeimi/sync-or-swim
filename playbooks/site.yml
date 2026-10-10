@@ -5,4 +5,15 @@
   roles:
     - lab_infra
 
-# Next phases plug in here, in order: wireguard, frr, mysql, monitoring, logging.
+- name: WireGuard tunnels
+  ansible.builtin.import_playbook: wireguard.yml
+- name: Routing (FRR, BGP, BFD)
+  ansible.builtin.import_playbook: frr.yml
+- name: MySQL primary/replica
+  ansible.builtin.import_playbook: mysql.yml
+- name: Exporters
+  ansible.builtin.import_playbook: exporters.yml
+- name: Monitoring and alerting
+  ansible.builtin.import_playbook: monitoring.yml
+- name: Central logging
+  ansible.builtin.import_playbook: logging.yml

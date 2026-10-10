@@ -1,6 +1,7 @@
 ---
 site: path-b
 loopback_ip: 10.255.0.12
+bgp_asn: 65102
 lab_links:
   transit-b: 172.31.2.22
   mgmt: 172.31.100.22
