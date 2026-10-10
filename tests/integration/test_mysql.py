@@ -118,3 +118,49 @@ def test_heartbeat_lag():
     now = datetime.datetime.now(datetime.timezone.utc)
     lag = abs((now - ts).total_seconds())
     assert lag < 5.0, f"Heartbeat lag is {lag}s, expected < 5s"
+
+
+@pytest.mark.slow
+def test_replica_persists_super_read_only_after_restart():
+    subprocess.run(["docker", "restart", "mysql-2-db"], check=True, capture_output=True)
+    deadline = time.time() + 30
+    while time.time() < deadline:
+        try:
+            val = mysql_query("mysql-2-db", "SELECT @@super_read_only;")
+            if val == "1":
+                return
+        except Exception:
+            pass
+        time.sleep(1)
+    pytest.fail("super_read_only not restored on mysql-2-db after restart")
+
+
+def test_replication_failure_and_catchup():
+    token = f"probe-catchup-{uuid.uuid4()}"
+    try:
+        mysql_query("mysql-2-db", "STOP REPLICA IO_THREAD;")
+        mysql_query(
+            "mysql-1-db",
+            "CREATE DATABASE IF NOT EXISTS sre; "
+            "CREATE TABLE IF NOT EXISTS sre.probe ("
+            "id INT AUTO_INCREMENT PRIMARY KEY, msg VARCHAR(64), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+            "); "
+            f"INSERT INTO sre.probe (msg) VALUES ('{token}');",
+        )
+        time.sleep(1.0)
+        cnt = mysql_query("mysql-2-db", f"SELECT COUNT(*) FROM sre.probe WHERE msg = '{token}';")
+        assert cnt == "0", f"Row {token} should not be on replica while IO thread is stopped"
+    finally:
+        mysql_query("mysql-2-db", "START REPLICA IO_THREAD;")
+
+    deadline = time.time() + 10.0
+    found = False
+    while time.time() < deadline:
+        cnt = mysql_query("mysql-2-db", f"SELECT COUNT(*) FROM sre.probe WHERE msg = '{token}';")
+        if cnt == "1":
+            found = True
+            break
+        time.sleep(0.5)
+
+    assert found, f"Row {token} did not catch up within 10 s after starting IO thread"
+

@@ -11,7 +11,4 @@ log_error_verbosity = 3
 replica_net_timeout = 10
 {% if mysql_node == mysql_primary %}
 event_scheduler = ON
-{% elif mysql_replica_initialized | default(true) %}
-read_only = ON
-super_read_only = ON
 {% endif %}
