@@ -1,0 +1,22 @@
+# {{ ansible_managed }}
+modules:
+  icmp:
+    prober: icmp
+    timeout: 5s
+    icmp:
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: false
+  icmp_loopback:
+    prober: icmp
+    timeout: 5s
+    icmp:
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: false
+      source_ip_address: "{{ hostvars[item].loopback_ip if (item is defined and item in hostvars) else hostvars['mysql-1'].loopback_ip }}"
+  tcp_connect:
+    prober: tcp
+    timeout: 5s
+    tcp:
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: false
+      source_ip_address: "{{ hostvars[item].loopback_ip if (item is defined and item in hostvars) else hostvars['mysql-1'].loopback_ip }}"
