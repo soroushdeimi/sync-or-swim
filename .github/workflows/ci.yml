@@ -5,6 +5,10 @@ name: ci
   push:
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     runs-on: ubuntu-24.04
@@ -16,19 +20,41 @@ jobs:
       - run: make deps
       - run: make lint
 
-  lab:
+  image:
     runs-on: ubuntu-24.04
-    needs: lint
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - run: make image-save
+      - uses: actions/upload-artifact@v4
+        with:
+          name: node-image
+          path: dist/node-image.tar.gz
+          retention-days: 7
+
+  lab:
+    runs-on: ubuntu-24.04
+    needs: [lint, image]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          name: node-image
+          path: dist
+      - run: make image-load
       - run: sudo modprobe wireguard
       - run: make deps
       - run: make up
-      - name: Idempotency (second run must report changed=0)
-        run: .venv/bin/ansible-playbook playbooks/site.yml | tee run2.log && grep -q 'changed=0' run2.log
+      - name: Idempotency (second run must change nothing)
+        run: make idempotency
       - run: make test
-      - if: always()
-        run: docker compose -p sync-or-swim logs --no-color
+      - if: failure()
+        name: Dump container status and logs on failure
+        run: |
+          docker ps -a
+          for c in $(docker ps -aq); do echo "== $(docker inspect -f '{{.Name}}' "$c")"; docker logs --tail 200 "$c" 2>&1; done

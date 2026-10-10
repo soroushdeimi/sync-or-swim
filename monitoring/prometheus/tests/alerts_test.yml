@@ -1,0 +1,167 @@
+---
+rule_files:
+  - ../rules/alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # Test AllPathsDown alert (positive case)
+  - interval: 1m
+    input_series:
+      - series: 'probe_success{instance="mysql-1", path="e2e"}'
+        values: '0+0x5'
+      - series: 'sre_peer_route_present{instance="mysql-1"}'
+        values: '0+0x5'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: AllPathsDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              instance: mysql-1
+              path: e2e
+            exp_annotations:
+              summary: "All network paths down between MySQL nodes"
+              description: "End-to-end loopback probe is failing and no peer route is present in routing table on mysql-1."
+              runbook_url: "https://github.com/soroushdeimi/sync-or-swim/blob/main/docs/runbooks/AllPathsDown.md"
+
+  # Test AllPathsDown negative case: probe fails but peer route is present
+  - interval: 1m
+    input_series:
+      - series: 'probe_success{instance="mysql-1", path="e2e"}'
+        values: '0+0x5'
+      - series: 'sre_peer_route_present{instance="mysql-1"}'
+        values: '1+0x5'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: AllPathsDown
+        exp_alerts: []
+
+  # Test TrafficOnBackupPath alert (positive case)
+  - interval: 1m
+    input_series:
+      - series: 'sre_active_path{path="wg-2", instance="mysql-1"}'
+        values: '1+0x5'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: TrafficOnBackupPath
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              path: wg-2
+              instance: mysql-1
+            exp_annotations:
+              summary: "Traffic running on backup path (wg-2)"
+              description: "Backup path wg-2 has been active for more than 1 minute in active_backup mode."
+              runbook_url: "https://github.com/soroushdeimi/sync-or-swim/blob/main/docs/runbooks/TrafficOnBackupPath.md"
+
+  # Test TrafficOnBackupPath negative case: wg-1 is active
+  - interval: 1m
+    input_series:
+      - series: 'sre_active_path{path="wg-1", instance="mysql-1"}'
+        values: '1+0x5'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: TrafficOnBackupPath
+        exp_alerts: []
+
+  # Test ReplicationIOStopped alert
+  - interval: 1m
+    input_series:
+      - series: 'mysql_slave_status_slave_io_running{instance="mysql-2"}'
+        values: '0+0x5'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: ReplicationIOStopped
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              instance: mysql-2
+            exp_annotations:
+              summary: "MySQL replication I/O thread stopped on mysql-2"
+              description: "Replication I/O thread is not running on replica mysql-2."
+              runbook_url: "https://github.com/soroushdeimi/sync-or-swim/blob/main/docs/runbooks/ReplicationIOStopped.md"
+
+  # Test ReplicationLagHigh warning case (lag = 45s)
+  - interval: 1m
+    input_series:
+      - series: 'mysql_heartbeat_now_timestamp_seconds{instance="mysql-2"}'
+        values: '1045+0x5'
+      - series: 'mysql_heartbeat_stored_timestamp_seconds{instance="mysql-2"}'
+        values: '1000+0x5'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: ReplicationLagHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: mysql-2
+            exp_annotations:
+              summary: "Replication lag on mysql-2"
+              description: "MySQL replication heartbeat lag on mysql-2 is > 30 seconds."
+              runbook_url: "https://github.com/soroushdeimi/sync-or-swim/blob/main/docs/runbooks/ReplicationLagHigh.md"
+
+  # Test ReplicationLagHigh negative case: lag is 10s (<= 30s)
+  - interval: 1m
+    input_series:
+      - series: 'mysql_heartbeat_now_timestamp_seconds{instance="mysql-2"}'
+        values: '1010+0x5'
+      - series: 'mysql_heartbeat_stored_timestamp_seconds{instance="mysql-2"}'
+        values: '1000+0x5'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: ReplicationLagHigh
+        exp_alerts: []
+
+  # Test ReplicationLagHigh when lag is 400s: both warning and critical fire in Prometheus
+  - interval: 1m
+    input_series:
+      - series: 'mysql_heartbeat_now_timestamp_seconds{instance="mysql-2"}'
+        values: '1400+0x5'
+      - series: 'mysql_heartbeat_stored_timestamp_seconds{instance="mysql-2"}'
+        values: '1000+0x5'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: ReplicationLagHigh
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              instance: mysql-2
+            exp_annotations:
+              summary: "Critical replication lag on mysql-2"
+              description: "MySQL replication heartbeat lag on mysql-2 is > 300 seconds."
+              runbook_url: "https://github.com/soroushdeimi/sync-or-swim/blob/main/docs/runbooks/ReplicationLagHigh.md"
+          - exp_labels:
+              severity: warning
+              instance: mysql-2
+            exp_annotations:
+              summary: "Replication lag on mysql-2"
+              description: "MySQL replication heartbeat lag on mysql-2 is > 30 seconds."
+              runbook_url: "https://github.com/soroushdeimi/sync-or-swim/blob/main/docs/runbooks/ReplicationLagHigh.md"
+
+  # Test RouteFlapping alert (> 4 changes in 10m)
+  - interval: 1m
+    input_series:
+      - series: 'sre_active_path{instance="mysql-1"}'
+        values: '1 2 1 2 1 2 2 2 2 2'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: RouteFlapping
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: mysql-1
+            exp_annotations:
+              summary: "Route flapping detected on mysql-1"
+              description: "Active routing path on mysql-1 has changed more than 4 times in the last 10 minutes."
+              runbook_url: "https://github.com/soroushdeimi/sync-or-swim/blob/main/docs/runbooks/RouteFlapping.md"
+
+  # Test RouteFlapping negative case: only 2 changes in 10m (<= 4)
+  - interval: 1m
+    input_series:
+      - series: 'sre_active_path{instance="mysql-1"}'
+        values: '1 2 1 1 1 1 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: RouteFlapping
+        exp_alerts: []

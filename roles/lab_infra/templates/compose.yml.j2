@@ -1,5 +1,4 @@
 # {{ ansible_managed }}
-# Rendered by the lab_infra role; do not edit by hand.
 name: {{ lab_project }}
 
 networks:
@@ -22,6 +21,8 @@ services:
     restart: unless-stopped
     cap_add:
       - NET_ADMIN
+      # FRR's zebra and bgpd refuse to start without it
+      - SYS_ADMIN
     sysctls:
 {%   for key, value in lab_sysctls.items() %}
       {{ key }}: "{{ value }}"
@@ -47,3 +48,15 @@ services:
       timeout: 2s
       retries: 3
 {% endfor %}
+
+  sidecar-healer:
+    image: {{ sidecar_healer_image }}
+    container_name: {{ lab_project }}-sidecar-healer
+    restart: unless-stopped
+    network_mode: none
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./sidecar-healer.sh:/sidecar-healer.sh:ro
+    command: ["/bin/sh", "/sidecar-healer.sh"]
+    labels:
+      sos.service: sidecar-healer

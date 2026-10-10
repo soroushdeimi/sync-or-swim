@@ -1,0 +1,6 @@
+---
+monitoring_prometheus_image: "prom/prometheus:v3.2.1"
+monitoring_alertmanager_image: "prom/alertmanager:v0.28.1"
+monitoring_grafana_image: "grafana/grafana:11.5.2"
+monitoring_mailpit_image: "axllent/mailpit:v1.22"
+monitoring_run_dir: "{{ lab_build_dir }}/monitoring"

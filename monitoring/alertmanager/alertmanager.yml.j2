@@ -1,0 +1,36 @@
+# {{ ansible_managed }}
+global:
+  resolve_timeout: 5m
+  smtp_smarthost: "{{ mgmt_services.mailpit }}:1025"
+  smtp_from: "alertmanager@sync-or-swim.local"
+  smtp_require_tls: false
+
+route:
+  group_by: [alertname, instance]
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 12h
+  receiver: mailpit-default
+  routes:
+    - matchers:
+        - severity = critical
+      repeat_interval: 1h
+      receiver: mailpit-default
+
+inhibit_rules:
+  - source_matchers:
+      - alertname = AllPathsDown
+    target_matchers:
+      - alertname =~ "BGPSessionDown|BFDPeerDown|PathHighPacketLoss|ReplicationIOStopped|ReplicationLagHigh|MySQLUnreachable"
+    equal: []
+  - source_matchers:
+      - severity = critical
+    target_matchers:
+      - severity = warning
+    equal: [alertname, instance]
+
+receivers:
+  - name: mailpit-default
+    email_configs:
+      - to: "sre-team@sync-or-swim.local"
+        send_resolved: true

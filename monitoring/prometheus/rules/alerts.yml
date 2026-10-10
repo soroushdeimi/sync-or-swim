@@ -1,0 +1,144 @@
+---
+groups:
+  - name: routing-and-links
+    rules:
+      - alert: BGPSessionDown
+        expr: frr_bgp_peer_state != 2
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "BGP session down on {{ $labels.instance }}"
+          description: "BGP session with peer {{ $labels.peer }} on {{ $labels.instance }} is not established (state={{ $value }})."
+          runbook_url: "https://github.com/soroushdeimi/sync-or-swim/blob/main/docs/runbooks/BGPSessionDown.md"
+
+      - alert: BFDPeerDown
+        expr: frr_bfd_peer_state != 1
+        for: 15s
+        labels:
+          severity: warning
+        annotations:
+          summary: "BFD peer down on {{ $labels.instance }}"
+          description: "BFD peer {{ $labels.peer }} on {{ $labels.instance }} is down (state={{ $value }})."
+          runbook_url: "https://github.com/soroushdeimi/sync-or-swim/blob/main/docs/runbooks/BFDPeerDown.md"
+
+      - alert: TrafficOnBackupPath
+        expr: sre_active_path{path="wg-2"} == 1
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Traffic running on backup path (wg-2)"
+          description: "Backup path wg-2 has been active for more than 1 minute in active_backup mode."
+          runbook_url: "https://github.com/soroushdeimi/sync-or-swim/blob/main/docs/runbooks/TrafficOnBackupPath.md"
+
+      - alert: AllPathsDown
+        expr: probe_success{path="e2e"} == 0 and on(instance) sre_peer_route_present == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "All network paths down between MySQL nodes"
+          description: "End-to-end loopback probe is failing and no peer route is present in routing table on {{ $labels.instance }}."
+          runbook_url: "https://github.com/soroushdeimi/sync-or-swim/blob/main/docs/runbooks/AllPathsDown.md"
+
+      - alert: WireGuardHandshakeStale
+        expr: (time() - wireguard_latest_handshake_seconds) > 180
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "WireGuard handshake stale on {{ $labels.instance }}"
+          description: "WireGuard handshake age on interface {{ $labels.interface }} on {{ $labels.instance }} is > 180 seconds."
+          runbook_url: "https://github.com/soroushdeimi/sync-or-swim/blob/main/docs/runbooks/WireGuardHandshakeStale.md"
+
+      - alert: PathHighPacketLoss
+        expr: (1 - avg_over_time(probe_success[2m])) > 0.05
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High packet loss detected on path {{ $labels.path }}"
+          description: "Packet loss on path {{ $labels.path }} (instance {{ $labels.instance }}) is > 5% over 2 minutes."
+          runbook_url: "https://github.com/soroushdeimi/sync-or-swim/blob/main/docs/runbooks/PathHighPacketLoss.md"
+
+      - alert: PathHighLatency
+        expr: probe_duration_seconds > (2 * avg_over_time(probe_duration_seconds[1h]))
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High latency detected on path {{ $labels.path }}"
+          description: "Probe duration on path {{ $labels.path }} is > 2x its 1-hour average."
+          runbook_url: "https://github.com/soroushdeimi/sync-or-swim/blob/main/docs/runbooks/PathHighLatency.md"
+
+      - alert: RouteFlapping
+        expr: changes(sre_active_path[10m]) > 4
+        labels:
+          severity: warning
+        annotations:
+          summary: "Route flapping detected on {{ $labels.instance }}"
+          description: "Active routing path on {{ $labels.instance }} has changed more than 4 times in the last 10 minutes."
+          runbook_url: "https://github.com/soroushdeimi/sync-or-swim/blob/main/docs/runbooks/RouteFlapping.md"
+
+      - alert: ExporterDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Monitoring scrape target down: {{ $labels.job }}"
+          description: "Exporter {{ $labels.job }} on {{ $labels.instance }} is unreachable."
+          runbook_url: "https://github.com/soroushdeimi/sync-or-swim/blob/main/docs/runbooks/ExporterDown.md"
+
+  - name: mysql-replication
+    rules:
+      - alert: MySQLUnreachable
+        expr: mysql_up == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "MySQL daemon unreachable on {{ $labels.instance }}"
+          description: "MySQL instance on {{ $labels.instance }} is down or not responding to queries."
+          runbook_url: "https://github.com/soroushdeimi/sync-or-swim/blob/main/docs/runbooks/MySQLUnreachable.md"
+
+      - alert: ReplicationIOStopped
+        expr: mysql_slave_status_slave_io_running == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "MySQL replication I/O thread stopped on {{ $labels.instance }}"
+          description: "Replication I/O thread is not running on replica {{ $labels.instance }}."
+          runbook_url: "https://github.com/soroushdeimi/sync-or-swim/blob/main/docs/runbooks/ReplicationIOStopped.md"
+
+      - alert: ReplicationSQLStopped
+        expr: mysql_slave_status_slave_sql_running == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "MySQL replication SQL thread stopped on {{ $labels.instance }}"
+          description: "Replication SQL thread is not running on replica {{ $labels.instance }}."
+          runbook_url: "https://github.com/soroushdeimi/sync-or-swim/blob/main/docs/runbooks/ReplicationSQLStopped.md"
+
+      - alert: ReplicationLagHigh
+        expr: (mysql_heartbeat_now_timestamp_seconds - mysql_heartbeat_stored_timestamp_seconds) > 300
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical replication lag on {{ $labels.instance }}"
+          description: "MySQL replication heartbeat lag on {{ $labels.instance }} is > 300 seconds."
+          runbook_url: "https://github.com/soroushdeimi/sync-or-swim/blob/main/docs/runbooks/ReplicationLagHigh.md"
+
+      - alert: ReplicationLagHigh
+        expr: (mysql_heartbeat_now_timestamp_seconds - mysql_heartbeat_stored_timestamp_seconds) > 30
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Replication lag on {{ $labels.instance }}"
+          description: "MySQL replication heartbeat lag on {{ $labels.instance }} is > 30 seconds."
+          runbook_url: "https://github.com/soroushdeimi/sync-or-swim/blob/main/docs/runbooks/ReplicationLagHigh.md"

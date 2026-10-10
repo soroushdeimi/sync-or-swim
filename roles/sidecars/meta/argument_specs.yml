@@ -1,0 +1,11 @@
+---
+argument_specs:
+  main:
+    short_description: Bring up a compose project whose containers may share node namespaces
+    options:
+      sidecars_project:
+        type: str
+        required: true
+      sidecars_src:
+        type: path
+        required: true

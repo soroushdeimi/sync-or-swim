@@ -1,5 +1,3 @@
-"""Milestone 1: the lab is up, addressed, isolated per path, and survives restarts."""
-
 import subprocess
 import time
 
@@ -78,6 +76,14 @@ def test_restart_restores_state():
     while time.time() < deadline:
         out = node("mysql-1").run("ip -4 -br addr show dev dummy0")
         if out.rc == 0 and "10.255.0.1/32" in out.stdout:
+            break
+        time.sleep(1)
+    else:
+        pytest.fail("dummy0 loopback not restored after docker restart")
+
+    # sidecars joined the old netns; the healer must restart them into the new one
+    while time.time() < deadline:
+        if subprocess.run(["curl", "-sf", "-m", "2", "-o", "/dev/null", "http://172.31.100.11:9100/metrics"]).returncode == 0:
             return
         time.sleep(1)
-    pytest.fail("dummy0 loopback not restored after docker restart")
+    pytest.fail("mysql-1 sidecars did not come back after the node restarted")

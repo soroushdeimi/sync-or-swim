@@ -1,0 +1,13 @@
+#!/bin/sh
+# {{ ansible_managed }}
+# A restarted node gets a new netns; containers joined to the old one must restart too.
+nodes=" {{ groups['nodes'] | join(' ') }} "
+docker events --filter type=container --filter event=start --format '{% raw %}{{.Actor.Attributes.name}}{% endraw %}' |
+while read -r name; do
+  case "$nodes" in *" $name "*) ;; *) continue ;; esac
+  ids=$(docker ps -aq --filter "label=sos.node=$name")
+  [ -n "$ids" ] || continue
+  echo "node $name started, restarting $(echo "$ids" | wc -w) sidecars"
+  # shellcheck disable=SC2086
+  docker restart $ids >/dev/null || echo "restart failed for $name sidecars (node recreated? rerun the playbook)"
+done

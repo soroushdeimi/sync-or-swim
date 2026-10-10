@@ -1,26 +1,21 @@
 ---
-# Compose project name; also the prefix for images.
 lab_project: sync-or-swim
 
-# Repository root and the git-ignored output directory shared by all roles.
 lab_root: "{{ (playbook_dir ~ '/..') | realpath }}"
 lab_build_dir: "{{ lab_root }}/build"
-# Per-node runtime dirs bind-mounted into containers: run/<host>/frr (FRR vty
-# sockets, shared with frr_exporter) and run/<host>/textfile (node_exporter).
+# run/<host>/{frr,textfile}, shared with exporter sidecars
 lab_run_dir: "{{ lab_build_dir }}/run"
+sidecar_healer_image: docker:28.5.1-cli
 lab_mgmt_network: "{{ lab_project }}_mgmt"
 
-# The node image tag is a hash of its build context, so editing the Dockerfile
-# or scripts produces a new tag, a rebuild and a recreate, while an unchanged
-# context keeps runs idempotent. Sidecars reuse this image.
+# Tagged by content hash: rebuilds only when the build context changes.
 node_image_context: "{{ lab_root }}/docker/node"
 node_image: >-
   {{ lab_project }}/node:{{ (lookup('file', node_image_context ~ '/Dockerfile')
       ~ lookup('file', node_image_context ~ '/entrypoint.sh')
       ~ lookup('file', node_image_context ~ '/sos-apply')) | hash('sha1') | truncate(12, True, '') }}
 
-# Underlay networks. transit-a and transit-b are the two independent
-# "ISP paths"; mgmt carries monitoring and logs, never replication traffic.
+# transit-a/b are the two independent paths; mgmt never carries replication.
 lab_networks:
   transit-a:
     subnet: 172.31.1.0/24
@@ -35,18 +30,15 @@ lab_networks:
     internal: false
     ifname: mgmt0
 
-# Namespaced sysctls, set by Docker when the container's namespace is created
-# (/proc/sys is read-only inside the container).
+# /proc/sys is read-only in containers, so Docker sets these.
 lab_sysctls:
   net.ipv4.ip_forward: 1
   net.ipv4.conf.all.rp_filter: 2
   net.ipv4.conf.default.rp_filter: 2
   net.ipv4.fib_multipath_hash_policy: 1
 
-# Header for rendered files.
 ansible_managed: Managed by Ansible (sync-or-swim); local edits will be overwritten.
 
-# Fixed mgmt addresses for the monitoring and logging stacks.
 mgmt_services:
   prometheus: 172.31.100.30
   alertmanager: 172.31.100.31
@@ -56,8 +48,7 @@ mgmt_services:
   mailpit: 172.31.100.35
   alert-webhook: 172.31.100.36
 
-# Exporters run as sidecars inside each node's network namespace and listen
-# on the node's mgmt address.
+# Sidecars in each node's netns, listening on its mgmt IP.
 exporter_ports:
   node: 9100
   blackbox: 9115

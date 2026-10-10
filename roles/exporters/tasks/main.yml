@@ -1,0 +1,39 @@
+---
+- name: Create exporters build directory
+  ansible.builtin.file:
+    path: "{{ lab_build_dir }}/exporters"
+    state: directory
+    mode: "0755"
+
+- name: Ensure textfile directories exist
+  ansible.builtin.file:
+    path: "{{ lab_run_dir }}/{{ item }}/textfile"
+    state: directory
+    mode: "0755"
+  loop: "{{ groups['nodes'] }}"
+
+- name: Render active-path script
+  ansible.builtin.template:
+    src: active-path.sh.j2
+    dest: "{{ lab_build_dir }}/exporters/active-path.sh"
+    mode: "0755"
+
+- name: Render per-node blackbox configuration
+  ansible.builtin.template:
+    src: blackbox.yml.j2
+    dest: "{{ lab_build_dir }}/exporters/blackbox-{{ item }}.yml"
+    mode: "0644"
+  loop: "{{ groups['mysql'] }}"
+
+- name: Render exporters compose file
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ lab_build_dir }}/exporters/compose.yml"
+    mode: "0644"
+
+- name: Bring up exporter sidecars
+  ansible.builtin.include_role:
+    name: sidecars
+  vars:
+    sidecars_project: "{{ lab_project }}-exporters"
+    sidecars_src: "{{ lab_build_dir }}/exporters"

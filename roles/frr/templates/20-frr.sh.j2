@@ -1,0 +1,18 @@
+#!/bin/bash
+set -euo pipefail
+
+mkdir -p /etc/frr /var/run/frr
+cp /etc/sos/frr/daemons /etc/frr/daemons
+cp /etc/sos/frr/frr.conf /etc/frr/frr.conf
+
+if [ ! -f /etc/frr/vtysh.conf ]; then
+  touch /etc/frr/vtysh.conf
+fi
+
+chown -R frr:frr /etc/frr /var/run/frr
+
+if ! pgrep -x watchfrr >/dev/null 2>&1; then
+  /usr/lib/frr/frrinit.sh start
+else
+  /usr/lib/frr/frr-reload.py --reload /etc/frr/frr.conf
+fi

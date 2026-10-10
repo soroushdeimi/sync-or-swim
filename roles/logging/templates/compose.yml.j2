@@ -1,0 +1,81 @@
+# {{ ansible_managed }}
+name: {{ lab_project }}-logging
+
+networks:
+  mgmt:
+    name: {{ lab_mgmt_network }}
+    external: true
+
+services:
+  loki:
+    image: {{ logging_loki_image }}
+    container_name: {{ lab_project }}-loki
+    restart: unless-stopped
+    command:
+      - -config.file=/etc/loki/config.yml
+    volumes:
+      - ./loki/config.yml:/etc/loki/config.yml:ro
+    ports:
+      - "127.0.0.1:3100:3100"
+    networks:
+      mgmt:
+        ipv4_address: {{ mgmt_services.loki }}
+    labels:
+      sos.service: loki
+      sos.role: monitoring
+
+  alloy:
+    image: {{ logging_alloy_image }}
+    container_name: {{ lab_project }}-alloy
+    restart: unless-stopped
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - {{ lab_run_dir }}:{{ lab_run_dir }}:ro
+    networks:
+      mgmt:
+        ipv4_address: {{ mgmt_services.alloy }}
+    labels:
+      sos.service: alloy
+      sos.role: monitoring
+    depends_on:
+      - loki
+
+{% for node in groups['nodes'] %}
+{%   set hv = hostvars[node] %}
+  {{ node }}-route-monitor:
+    image: {{ node_image }}
+    container_name: {{ node }}-route-monitor
+    restart: unless-stopped
+    init: true
+    network_mode: "container:{{ node }}"
+    command: ["ip", "-ts", "monitor", "route", "link"]
+    labels:
+      sos.service: route-monitor
+      sos.node: "{{ node }}"
+      sos.site: "{{ hv.site }}"
+      sos.role: "{{ 'mysql' if node in groups['mysql'] else 'relay' }}"
+
+  {{ node }}-wg-watch:
+    image: {{ node_image }}
+    container_name: {{ node }}-wg-watch
+    restart: unless-stopped
+    init: true
+    network_mode: "container:{{ node }}"
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      - ./scripts/wg-watch.sh:/usr/local/bin/wg-watch.sh:ro
+    command: ["/usr/local/bin/wg-watch.sh"]
+    labels:
+      sos.service: wg-watch
+      sos.node: "{{ node }}"
+      sos.site: "{{ hv.site }}"
+      sos.role: "{{ 'mysql' if node in groups['mysql'] else 'relay' }}"
+
+{% endfor %}

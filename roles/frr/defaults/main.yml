@@ -1,0 +1,3 @@
+---
+frr_config_dir: /etc/sos/frr
+frr_init_dir: /etc/sos/init.d

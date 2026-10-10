@@ -1,0 +1,73 @@
+#!/bin/sh
+set -eu
+
+if [ $# -lt 1 ] || [ -z "$1" ]; then
+    echo "Usage: $0 <peer-loopback-ip>" >&2
+    exit 1
+fi
+PEER="$1"
+
+dev_to_relay() {
+    case "$1" in
+{% set seen_devs = [] %}
+{% for tunnel in wg_tunnels if tunnel.a.host in groups['mysql'] %}
+{%   if tunnel.a.ifname not in seen_devs %}
+{%     set _ = seen_devs.append(tunnel.a.ifname) %}
+        {{ tunnel.a.ifname }}) echo "{{ tunnel.b.host }}" ;;
+{%   endif %}
+{% endfor %}
+        *) echo "" ;;
+    esac
+}
+
+while true; do
+    ROUTE_SHOW=$(ip -j route show "${PEER}/32" 2>/dev/null || true)
+    ROUTE_GET=$(ip -j route get "$PEER" 2>/dev/null || true)
+
+    if [ -z "$ROUTE_SHOW" ] || [ "$ROUTE_SHOW" = "[]" ]; then
+        ROUTE_PRESENT=0
+        NEXTHOPS=0
+    else
+        ROUTE_PRESENT=1
+        NEXTHOPS=$(echo "$ROUTE_SHOW" | jq -r '
+          if (.[0].nexthops | type) == "array" then
+            .[0].nexthops | length
+          elif .[0].dev or .[0].gateway then
+            1
+          else
+            0
+          end
+        ' 2>/dev/null || echo 0)
+    fi
+
+    ACTIVE_DEV=""
+    if [ "$ROUTE_PRESENT" -eq 1 ] && [ -n "$ROUTE_GET" ] && [ "$ROUTE_GET" != "[]" ]; then
+        ACTIVE_DEV=$(echo "$ROUTE_GET" | jq -r '.[0].dev // empty' 2>/dev/null || echo "")
+    fi
+
+    ACTIVE_RELAY=$(dev_to_relay "$ACTIVE_DEV")
+
+    TMP_FILE="/textfile/active_path.prom.tmp.$$"
+    {
+        echo "# HELP sre_active_path Indicates whether the relay path to the peer loopback is active"
+        echo "# TYPE sre_active_path gauge"
+{% for relay in groups['relays'] %}
+        if [ "$ACTIVE_RELAY" = "{{ relay }}" ]; then
+            echo 'sre_active_path{path="{{ relay }}"} 1'
+        else
+            echo 'sre_active_path{path="{{ relay }}"} 0'
+        fi
+{% endfor %}
+        echo "# HELP sre_route_nexthops Number of nexthops in peer loopback route"
+        echo "# TYPE sre_route_nexthops gauge"
+        echo "sre_route_nexthops $NEXTHOPS"
+        echo "# HELP sre_peer_route_present Whether a route to the peer loopback exists"
+        echo "# TYPE sre_peer_route_present gauge"
+        echo "sre_peer_route_present $ROUTE_PRESENT"
+    } > "$TMP_FILE"
+
+    chmod 0644 "$TMP_FILE"
+    mv -f "$TMP_FILE" /textfile/active_path.prom
+
+    sleep 2
+done

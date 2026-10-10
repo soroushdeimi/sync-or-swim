@@ -1,8 +1,5 @@
 ---
-# Routing design shared by the wireguard, frr, mysql, exporters and logging roles.
-
-# active_backup: wg-1 is preferred (local-preference), wg-2 is the backup.
-# ecmp: both relays carry traffic (maximum-paths 2, multipath-relax).
+# active_backup or ecmp
 routing_mode: active_backup
 primary_relay: wg-1
 
@@ -13,8 +10,7 @@ bfd_detect_multiplier: 3
 wg_mtu: 1420
 wg_keepalive: 25
 
-# One entry per WireGuard tunnel: "a" is the MySQL end, "b" the relay end.
-# An end's underlay endpoint is hostvars[end.host].lab_links[tunnel.underlay].
+# a = mysql end, b = relay end
 wg_tunnels:
   - id: m1-r1
     underlay: transit-a

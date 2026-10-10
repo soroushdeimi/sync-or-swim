@@ -1,0 +1,68 @@
+---
+- name: Ensure monitoring build directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ monitoring_run_dir }}"
+    - "{{ monitoring_run_dir }}/prometheus"
+    - "{{ monitoring_run_dir }}/prometheus/rules"
+    - "{{ monitoring_run_dir }}/alertmanager"
+    - "{{ monitoring_run_dir }}/grafana"
+    - "{{ monitoring_run_dir }}/grafana/provisioning/datasources"
+    - "{{ monitoring_run_dir }}/grafana/provisioning/dashboards"
+    - "{{ monitoring_run_dir }}/grafana/dashboards"
+
+- name: Render Prometheus configuration
+  ansible.builtin.template:
+    src: "{{ lab_root }}/monitoring/prometheus/prometheus.yml.j2"
+    dest: "{{ monitoring_run_dir }}/prometheus/prometheus.yml"
+    mode: "0644"
+  notify: Reload prometheus
+
+- name: Copy Prometheus alert rules
+  ansible.builtin.copy:
+    src: "{{ lab_root }}/monitoring/prometheus/rules/"
+    dest: "{{ monitoring_run_dir }}/prometheus/rules/"
+    mode: "0644"
+  notify: Reload prometheus
+
+- name: Render Alertmanager configuration
+  ansible.builtin.template:
+    src: "{{ lab_root }}/monitoring/alertmanager/alertmanager.yml.j2"
+    dest: "{{ monitoring_run_dir }}/alertmanager/alertmanager.yml"
+    mode: "0644"
+  notify: Reload alertmanager
+
+- name: Render Grafana datasources provisioning
+  ansible.builtin.template:
+    src: "{{ lab_root }}/monitoring/grafana/provisioning/datasources/datasources.yml.j2"
+    dest: "{{ monitoring_run_dir }}/grafana/provisioning/datasources/datasources.yml"
+    mode: "0644"
+
+- name: Render Grafana dashboards provisioning
+  ansible.builtin.template:
+    src: "{{ lab_root }}/monitoring/grafana/provisioning/dashboards/dashboards.yml.j2"
+    dest: "{{ monitoring_run_dir }}/grafana/provisioning/dashboards/dashboards.yml"
+    mode: "0644"
+
+- name: Copy Grafana dashboards
+  ansible.builtin.copy:
+    src: "{{ lab_root }}/monitoring/grafana/dashboards/"
+    dest: "{{ monitoring_run_dir }}/grafana/dashboards/"
+    mode: "0644"
+
+- name: Render monitoring compose project
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ monitoring_run_dir }}/compose.yml"
+    mode: "0644"
+
+- name: Deploy monitoring compose stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ monitoring_run_dir }}"
+    project_name: "{{ lab_project }}-monitoring"
+    state: present
+    wait: true
+    wait_timeout: 120

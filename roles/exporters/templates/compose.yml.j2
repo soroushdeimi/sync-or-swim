@@ -1,0 +1,107 @@
+# {{ ansible_managed }}
+name: {{ lab_project }}-exporters
+
+services:
+{% for node in groups['nodes'] %}
+{%   set hv = hostvars[node] %}
+{%   set mgmt_ip = hv.lab_links.mgmt %}
+  {{ node }}-node:
+    image: {{ exporters_node_image }}
+    restart: unless-stopped
+    network_mode: "container:{{ node }}"
+    labels:
+      sos.service: node
+      sos.node: "{{ node }}"
+    volumes:
+      - {{ lab_run_dir }}/{{ node }}/textfile:/textfile:ro
+    command:
+      - --web.listen-address={{ mgmt_ip }}:{{ exporter_ports.node }}
+      - --collector.textfile.directory=/textfile
+
+  {{ node }}-frr:
+    image: {{ exporters_frr_image }}
+    restart: unless-stopped
+    network_mode: "container:{{ node }}"
+    labels:
+      sos.service: frr
+      sos.node: "{{ node }}"
+    volumes:
+      - {{ lab_run_dir }}/{{ node }}/frr:/var/run/frr
+    command:
+      - --web.listen-address={{ mgmt_ip }}:{{ exporter_ports.frr }}
+      - --frr.socket.dir-path=/var/run/frr
+      - --collector.bgp
+      - --collector.bfd
+      - --no-collector.ospf
+
+  {{ node }}-wireguard:
+    image: {{ exporters_wireguard_image }}
+    restart: unless-stopped
+    network_mode: "container:{{ node }}"
+    cap_add:
+      - NET_ADMIN
+    labels:
+      sos.service: wireguard
+      sos.node: "{{ node }}"
+    command:
+      - "-a"
+      - "false"
+      - "-l"
+      - "{{ mgmt_ip }}"
+      - "-p"
+      - "{{ exporter_ports.wireguard }}"
+{% endfor %}
+{% for node in groups['mysql'] %}
+{%   set hv = hostvars[node] %}
+{%   set mgmt_ip = hv.lab_links.mgmt %}
+{%   set peer_node = (groups['mysql'] | reject('equalto', node) | first) %}
+{%   set peer_loopback = hostvars[peer_node].loopback_ip %}
+  {{ node }}-blackbox:
+    image: {{ exporters_blackbox_image }}
+    restart: unless-stopped
+    network_mode: "container:{{ node }}"
+    cap_add:
+      - NET_RAW
+    labels:
+      sos.service: blackbox
+      sos.node: "{{ node }}"
+    volumes:
+      - {{ lab_build_dir }}/exporters/blackbox-{{ node }}.yml:/etc/blackbox/blackbox.yml:ro
+    command:
+      - --config.file=/etc/blackbox/blackbox.yml
+      - --web.listen-address={{ mgmt_ip }}:{{ exporter_ports.blackbox }}
+
+  {{ node }}-mysqld:
+    image: {{ exporters_mysqld_image }}
+    restart: unless-stopped
+    network_mode: "container:{{ node }}"
+    labels:
+      sos.service: mysqld
+      sos.node: "{{ node }}"
+    environment:
+      DATA_SOURCE_NAME: "exporter:{{ mysql_exporter_password }}@(127.0.0.1:3306)/"
+      MYSQLD_EXPORTER_PASSWORD: "{{ mysql_exporter_password }}"
+    command:
+      - --web.listen-address={{ mgmt_ip }}:{{ exporter_ports.mysqld }}
+      - --mysqld.address=127.0.0.1:3306
+      - --mysqld.username=exporter
+      - --collect.heartbeat
+      - --collect.heartbeat.database=sre
+      - --collect.heartbeat.table=heartbeat
+      - --collect.heartbeat.utc
+
+  {{ node }}-active-path:
+    image: {{ node_image }}
+    restart: unless-stopped
+    network_mode: "container:{{ node }}"
+    labels:
+      sos.service: active-path
+      sos.node: "{{ node }}"
+    volumes:
+      - {{ lab_build_dir }}/exporters/active-path.sh:/usr/local/bin/active-path.sh:ro
+      - {{ lab_run_dir }}/{{ node }}/textfile:/textfile
+    command:
+      - /bin/sh
+      - /usr/local/bin/active-path.sh
+      - "{{ peer_loopback }}"
+{% endfor %}
