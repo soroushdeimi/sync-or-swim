@@ -1,7 +1,7 @@
 VENV ?= .venv
 BIN  := $(VENV)/bin
 
-.PHONY: help venv deps up deploy down test lint ps shell
+.PHONY: help venv deps up deploy down test lint ps shell image image-save image-load idempotency
 
 help: ## Show targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-8s %s\n", $$1, $$2}'
@@ -30,10 +30,25 @@ test: ## Run the integration tests against the running lab
 lint: ## yamllint + ansible-lint + shellcheck
 	$(BIN)/yamllint .
 	$(BIN)/ansible-lint
-	shellcheck docker/node/entrypoint.sh docker/node/sos-apply
+	shellcheck docker/node/entrypoint.sh docker/node/sos-apply scripts/*.sh
+
+idempotency: venv ## Re-run site.yml and fail if anything changed
+	$(BIN)/ansible-playbook playbooks/site.yml | tee build/idempotency.log
+	scripts/check-idempotent.py build/idempotency.log
 
 ps: ## Show lab containers
 	docker compose -p sync-or-swim ps
 
 shell: ## Open a shell in a node: make shell N=mysql-1
 	docker exec -it $(N) bash
+
+IMAGE_FILE ?= dist/node-image.tar.gz
+
+image: venv ## Build the node image if not present
+	scripts/image.sh build
+
+image-save: venv ## Save the node image to dist/node-image.tar.gz
+	scripts/image.sh save $(IMAGE_FILE)
+
+image-load: venv ## Load the node image and verify tag
+	scripts/image.sh load $(IMAGE_FILE)
