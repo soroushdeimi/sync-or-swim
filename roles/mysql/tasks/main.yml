@@ -1,0 +1,54 @@
+---
+- name: Create MySQL config directories
+  ansible.builtin.file:
+    path: "{{ lab_build_dir }}/mysql/{{ item }}/conf.d"
+    state: directory
+    mode: "0755"
+  loop: "{{ mysql_nodes }}"
+
+- name: Render sos.cnf for MySQL nodes
+  ansible.builtin.template:
+    src: sos.cnf.j2
+    dest: "{{ lab_build_dir }}/mysql/{{ mysql_node }}/conf.d/sos.cnf"
+    mode: "0644"
+  loop: "{{ mysql_nodes }}"
+  loop_control:
+    loop_var: mysql_node
+
+- name: Render MySQL compose file
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ lab_build_dir }}/mysql/compose.yml"
+    mode: "0644"
+
+- name: Bring up MySQL compose project
+  ansible.builtin.include_role:
+    name: sidecars
+  vars:
+    sidecars_project: "{{ lab_project }}-mysql"
+    sidecars_src: "{{ lab_build_dir }}/mysql"
+
+- name: Check MySQL setup steps
+  community.docker.docker_container_exec:
+    container: "{{ item.container }}"
+    argv: "{{ mysql_sql_cmd + [item.check] }}"
+    env:
+      MYSQL_PWD: "{{ mysql_root_password }}"
+  loop: "{{ mysql_sql_steps }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: mysql_sql_check
+  changed_when: false
+  no_log: true
+
+- name: Apply MySQL setup steps
+  community.docker.docker_container_exec:
+    container: "{{ item.item.container }}"
+    argv: "{{ mysql_sql_cmd + [item.item.apply] }}"
+    env:
+      MYSQL_PWD: "{{ mysql_root_password }}"
+  loop: "{{ mysql_sql_check.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  when: item.stdout | trim == '0'
+  no_log: true

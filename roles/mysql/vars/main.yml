@@ -1,0 +1,58 @@
+---
+mysql_sql_cmd:
+  - mysql
+  - -uroot
+  - -NBe
+
+mysql_sql_steps:
+  - name: repl user
+    container: "{{ mysql_primary }}-db"
+    check: "SELECT count(*) FROM mysql.user WHERE user = 'repl' AND host = '{{ hostvars[mysql_replica].loopback_ip }}';"
+    apply: >-
+      CREATE USER 'repl'@'{{ hostvars[mysql_replica].loopback_ip }}'
+      IDENTIFIED WITH caching_sha2_password BY '{{ mysql_repl_password }}' REQUIRE SSL;
+      GRANT REPLICATION SLAVE ON *.* TO 'repl'@'{{ hostvars[mysql_replica].loopback_ip }}';
+
+  - name: exporter user
+    container: "{{ mysql_primary }}-db"
+    check: "SELECT count(*) FROM mysql.user WHERE user = 'exporter' AND host = '127.0.0.1';"
+    apply: >-
+      CREATE USER 'exporter'@'127.0.0.1'
+      IDENTIFIED WITH caching_sha2_password BY '{{ mysql_exporter_password }}' WITH MAX_USER_CONNECTIONS 3;
+      GRANT PROCESS, REPLICATION CLIENT, SELECT ON *.* TO 'exporter'@'127.0.0.1';
+
+  - name: heartbeat table
+    container: "{{ mysql_primary }}-db"
+    check: "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'sre' AND table_name = 'heartbeat';"
+    apply: >-
+      CREATE DATABASE IF NOT EXISTS sre;
+      CREATE TABLE IF NOT EXISTS sre.heartbeat (ts varchar(26) NOT NULL, server_id int unsigned NOT NULL PRIMARY KEY);
+
+  - name: heartbeat tick event
+    container: "{{ mysql_primary }}-db"
+    check: "SELECT count(*) FROM information_schema.events WHERE event_schema = 'sre' AND event_name = 'heartbeat_tick';"
+    apply: >-
+      CREATE EVENT sre.heartbeat_tick ON SCHEDULE EVERY 1 SECOND DO
+      REPLACE INTO sre.heartbeat (ts, server_id) VALUES (DATE_FORMAT(UTC_TIMESTAMP(6), '%Y-%m-%dT%H:%i:%s.%f'), @@server_id);
+
+  - name: replication source
+    container: "{{ mysql_replica }}-db"
+    check: "SELECT count(*) FROM performance_schema.replication_connection_configuration;"
+    apply: >-
+      CHANGE REPLICATION SOURCE TO
+      SOURCE_HOST='{{ hostvars[mysql_primary].loopback_ip }}',
+      SOURCE_PORT=3306,
+      SOURCE_USER='repl',
+      SOURCE_PASSWORD='{{ mysql_repl_password }}',
+      SOURCE_AUTO_POSITION=1,
+      SOURCE_SSL=1,
+      SOURCE_CONNECT_RETRY=5,
+      SOURCE_RETRY_COUNT=86400,
+      SOURCE_HEARTBEAT_PERIOD=2,
+      SOURCE_BIND='{{ hostvars[mysql_replica].loopback_ip }}';
+      START REPLICA;
+
+  - name: persist super_read_only
+    container: "{{ mysql_replica }}-db"
+    check: "SELECT count(*) FROM performance_schema.persisted_variables WHERE variable_name = 'super_read_only';"
+    apply: "SET PERSIST read_only = ON; SET PERSIST super_read_only = ON;"

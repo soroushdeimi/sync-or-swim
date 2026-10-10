@@ -1,0 +1,4 @@
+---
+mysql_nodes:
+  - "{{ mysql_primary }}"
+  - "{{ mysql_replica }}"

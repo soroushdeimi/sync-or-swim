@@ -1,0 +1,31 @@
+# {{ ansible_managed }}
+name: {{ lab_project }}-mysql
+
+services:
+{% for node in mysql_nodes %}
+  {{ node }}-db:
+    image: {{ mysql_image }}
+    container_name: {{ node }}-db
+    restart: unless-stopped
+    network_mode: "container:{{ node }}"
+    environment:
+      MYSQL_ROOT_PASSWORD: "{{ mysql_root_password }}"
+    volumes:
+      - {{ node }}-data:/var/lib/mysql
+      - {{ lab_build_dir }}/mysql/{{ node }}/conf.d:/etc/mysql/conf.d:ro
+    labels:
+      sos.service: mysql
+      sos.node: "{{ node }}"
+      sos.site: "{{ hostvars[node].site }}"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
+{% endfor %}
+
+volumes:
+{% for node in mysql_nodes %}
+  {{ node }}-data:
+{% endfor %}
