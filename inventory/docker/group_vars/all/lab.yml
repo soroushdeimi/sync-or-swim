@@ -5,6 +5,7 @@ lab_root: "{{ (playbook_dir ~ '/..') | realpath }}"
 lab_build_dir: "{{ lab_root }}/build"
 # run/<host>/{frr,textfile}, shared with exporter sidecars
 lab_run_dir: "{{ lab_build_dir }}/run"
+sidecar_healer_image: docker:28.5.1-cli
 lab_mgmt_network: "{{ lab_project }}_mgmt"
 
 # Tagged by content hash: rebuilds only when the build context changes.

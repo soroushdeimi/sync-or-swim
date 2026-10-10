@@ -1,0 +1,37 @@
+---
+# Containers joined to a node's netns keep the old namespace when the node is
+# recreated, so take the project down first if any of them is stale.
+- name: Read current node container IDs
+  ansible.builtin.command:
+    cmd: docker inspect --format {% raw %}'{{.Name}} container:{{.Id}}'{% endraw %} {{ groups['nodes'] | join(' ') }}
+  register: sidecars_nodes
+  changed_when: false
+
+- name: Read sidecar namespaces for {{ sidecars_project }}
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      docker ps -aq --filter label=com.docker.compose.project={{ sidecars_project }} |
+      xargs -r docker inspect --format {% raw %}'{{.HostConfig.NetworkMode}}'{% endraw %}
+    executable: /bin/bash
+  register: sidecars_modes
+  changed_when: false
+
+- name: Recreate stale sidecars of {{ sidecars_project }}
+  community.docker.docker_compose_v2:
+    project_src: "{{ sidecars_src }}"
+    project_name: "{{ sidecars_project }}"
+    state: absent
+  vars:
+    sidecars_current: "{{ sidecars_nodes.stdout_lines | map('split') | map('last') | list }}"
+  when: >-
+    sidecars_modes.stdout_lines | select('match', 'container:') | reject('in', sidecars_current) | list | length > 0
+
+- name: Bring up {{ sidecars_project }}
+  community.docker.docker_compose_v2:
+    project_src: "{{ sidecars_src }}"
+    project_name: "{{ sidecars_project }}"
+    state: present
+    remove_orphans: true
+    wait: true
+    wait_timeout: 120

@@ -31,49 +31,9 @@
     dest: "{{ lab_build_dir }}/exporters/compose.yml"
     mode: "0644"
 
-- name: Query lab node container IDs
-  ansible.builtin.command:
-    cmd: "docker inspect --format {% raw %}'{{.Id}}'{% endraw %} {{ item }}"
-  loop: "{{ groups['nodes'] }}"
-  register: exporters_node_inspect
-  changed_when: false
-
-- name: Check exporter container network namespaces
-  ansible.builtin.shell:
-    cmd: >-
-      set -o pipefail;
-      docker ps -aq --filter label=com.docker.compose.project={{ lab_project }}-exporters |
-      xargs -r docker inspect --format {% raw %}'{{index .Config.Labels "sos.node"}} {{.HostConfig.NetworkMode}}'{% endraw %}
-    executable: /bin/bash
-  register: exporters_sidecars_inspect
-  changed_when: false
-
-- name: Determine if exporter containers need recreate
-  ansible.builtin.set_fact:
-    exporters_need_recreate: "{{ (mismatches | from_json | length) > 0 }}"
+- name: Bring up exporter sidecars
+  ansible.builtin.include_role:
+    name: sidecars
   vars:
-    node_ids: "{{ exporters_node_inspect.results | items2dict(key_name='item', value_name='stdout') }}"
-    mismatches: >-
-      [
-      {% for line in exporters_sidecars_inspect.stdout_lines if line.split() | length == 2 %}
-      {%   set parts = line.split() %}
-      {%   if parts[0] in node_ids and parts[1] != ('container:' ~ node_ids[parts[0]]) %}
-      "{{ parts[0] }}",
-      {%   endif %}
-      {% endfor %}
-      ]
-
-- name: Remove stale exporter containers if parent node was recreated
-  community.docker.docker_compose_v2:
-    project_src: "{{ lab_build_dir }}/exporters"
-    project_name: "{{ lab_project }}-exporters"
-    state: absent
-  when: exporters_need_recreate | bool
-
-- name: Bring up exporter containers
-  community.docker.docker_compose_v2:
-    project_src: "{{ lab_build_dir }}/exporters"
-    project_name: "{{ lab_project }}-exporters"
-    state: present
-    remove_orphans: true
-    wait: true
+    sidecars_project: "{{ lab_project }}-exporters"
+    sidecars_src: "{{ lab_build_dir }}/exporters"

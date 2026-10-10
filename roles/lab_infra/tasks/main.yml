@@ -28,6 +28,12 @@
   register: lab_infra_loopback_scripts
   notify: Re-apply node state
 
+- name: Render the sidecar healer script
+  ansible.builtin.template:
+    src: sidecar-healer.sh.j2
+    dest: "{{ lab_build_dir }}/sidecar-healer.sh"
+    mode: "0755"
+
 - name: Render the compose project
   ansible.builtin.template:
     src: compose.yml.j2

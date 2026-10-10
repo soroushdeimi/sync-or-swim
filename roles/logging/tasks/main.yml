@@ -35,9 +35,8 @@
     mode: "0644"
 
 - name: Bring the logging stack up
-  community.docker.docker_compose_v2:
-    project_src: "{{ logging_build_dir }}"
-    project_name: "{{ lab_project }}-logging"
-    state: present
-    wait: true
-    wait_timeout: 120
+  ansible.builtin.include_role:
+    name: sidecars
+  vars:
+    sidecars_project: "{{ lab_project }}-logging"
+    sidecars_src: "{{ logging_build_dir }}"
