@@ -1,7 +1,7 @@
 VENV ?= .venv
 BIN  := $(VENV)/bin
 
-.PHONY: help venv deps up deploy down test lint ps shell image image-save image-load idempotency
+.PHONY: help venv deps up deploy down test lint ps shell image image-save image-load idempotency chaos
 
 help: ## Show targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-8s %s\n", $$1, $$2}'
@@ -26,6 +26,13 @@ down: ## Remove all lab containers and networks
 
 test: ## Run the integration tests against the running lab
 	$(BIN)/pytest -v tests/integration
+
+SCENARIO ?=
+CHAOS_EXPR := $(if $(SCENARIO),$(if $(findstring -k,$(SCENARIO)),$(SCENARIO),-k "$(SCENARIO)"),)
+
+chaos: venv ## Run chaos test suite and generate report
+	$(BIN)/pytest -v -m chaos tests/chaos $(CHAOS_EXPR)
+	python3 scripts/chaos-report.py
 
 lint: ## yamllint + ansible-lint + shellcheck
 	$(BIN)/yamllint .
