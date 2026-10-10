@@ -1,9 +1,9 @@
-build/
+/build
 __pycache__/
 .pytest_cache/
 *.retry
 .vault_pass*
-.venv/
+/.venv
 .ansible/
 .worker/
 dist/
