@@ -1,0 +1,6 @@
+---
+exporters_node_image: prom/node-exporter:v1.9.0
+exporters_frr_image: ghcr.io/tynany/frr_exporter:v1.12.0
+exporters_wireguard_image: mindflavor/prometheus-wireguard-exporter:3.6.6
+exporters_blackbox_image: prom/blackbox-exporter:v0.25.0
+exporters_mysqld_image: prom/mysqld-exporter:v0.16.0
