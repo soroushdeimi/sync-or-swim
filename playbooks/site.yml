@@ -15,5 +15,7 @@
   ansible.builtin.import_playbook: exporters.yml
 - name: Monitoring and alerting
   ansible.builtin.import_playbook: monitoring.yml
+- name: Automated diagnostics
+  ansible.builtin.import_playbook: autodiagnose.yml
 - name: Central logging
   ansible.builtin.import_playbook: logging.yml

@@ -14,6 +14,10 @@ route:
   routes:
     - matchers:
         - severity = critical
+      receiver: autodiagnose-webhook
+      continue: true
+    - matchers:
+        - severity = critical
       repeat_interval: 1h
       receiver: mailpit-default
 
@@ -34,3 +38,7 @@ receivers:
     email_configs:
       - to: "sre-team@sync-or-swim.local"
         send_resolved: true
+  - name: autodiagnose-webhook
+    webhook_configs:
+      - url: "http://{{ mgmt_services['alert-webhook'] }}:9095/"
+        send_resolved: false

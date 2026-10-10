@@ -1,0 +1,25 @@
+---
+- name: Build the autodiagnose image
+  community.docker.docker_image_build:
+    name: "{{ autodiagnose_image }}"
+    path: "{{ autodiagnose_context }}"
+    rebuild: never
+
+- name: Ensure autodiagnose build directory exists
+  ansible.builtin.file:
+    path: "{{ autodiagnose_build_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Render autodiagnose compose project
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ autodiagnose_build_dir }}/compose.yml"
+    mode: "0644"
+
+- name: Bring the autodiagnose stack up
+  ansible.builtin.include_role:
+    name: sidecars
+  vars:
+    sidecars_project: "{{ lab_project }}-autodiagnose"
+    sidecars_src: "{{ autodiagnose_build_dir }}"

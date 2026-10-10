@@ -1,0 +1,23 @@
+# {{ ansible_managed }}
+name: {{ lab_project }}-autodiagnose
+
+networks:
+  mgmt:
+    name: {{ lab_mgmt_network }}
+    external: true
+
+services:
+  autodiagnose:
+    image: {{ autodiagnose_image }}
+    container_name: {{ lab_project }}-autodiagnose
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - {{ lab_root }}/scripts:/scripts:ro
+      - {{ lab_root }}/inventory:/inventory:ro
+    networks:
+      mgmt:
+        ipv4_address: {{ mgmt_services['alert-webhook'] }}
+    labels:
+      sos.service: autodiagnose
+      sos.role: monitoring
