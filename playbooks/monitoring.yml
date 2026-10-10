@@ -1,6 +1,6 @@
 ---
-# Placeholder; the role for this phase is added on its own branch.
 - name: Monitoring and alerting
   hosts: lab
   gather_facts: false
-  tasks: []
+  roles:
+    - role: monitoring

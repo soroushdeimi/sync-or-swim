@@ -1,0 +1,140 @@
+# {{ ansible_managed }}
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - "{{ mgmt_services.alertmanager }}:9093"
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+scrape_configs:
+  - job_name: node
+    static_configs:
+{% for node in groups['nodes'] %}
+{%   set hv = hostvars[node] %}
+      - targets:
+          - "{{ hv.lab_links.mgmt }}:{{ exporter_ports.node }}"
+        labels:
+          instance: "{{ node }}"
+          site: "{{ hv.site }}"
+          role: "{{ 'mysql' if node in groups['mysql'] else 'relay' }}"
+{% endfor %}
+
+  - job_name: frr
+    static_configs:
+{% for node in groups['nodes'] %}
+{%   set hv = hostvars[node] %}
+      - targets:
+          - "{{ hv.lab_links.mgmt }}:{{ exporter_ports.frr }}"
+        labels:
+          instance: "{{ node }}"
+          site: "{{ hv.site }}"
+          role: "{{ 'mysql' if node in groups['mysql'] else 'relay' }}"
+{% endfor %}
+
+  - job_name: wireguard
+    static_configs:
+{% for node in groups['nodes'] %}
+{%   set hv = hostvars[node] %}
+      - targets:
+          - "{{ hv.lab_links.mgmt }}:{{ exporter_ports.wireguard }}"
+        labels:
+          instance: "{{ node }}"
+          site: "{{ hv.site }}"
+          role: "{{ 'mysql' if node in groups['mysql'] else 'relay' }}"
+{% endfor %}
+
+  - job_name: mysqld
+    static_configs:
+{% for node in groups['mysql'] %}
+{%   set hv = hostvars[node] %}
+      - targets:
+          - "{{ hv.lab_links.mgmt }}:{{ exporter_ports.mysqld }}"
+        labels:
+          instance: "{{ node }}"
+          site: "{{ hv.site }}"
+          role: mysql
+{% endfor %}
+
+  # Blackbox ICMP probes to tunnel peer IPs from each mysql node's blackbox exporter
+{% for m_node in groups['mysql'] %}
+{%   set m_hv = hostvars[m_node] %}
+  - job_name: blackbox-tunnels-{{ m_node }}
+    metrics_path: /probe
+    params:
+      module: [icmp]
+    static_configs:
+{%   for t in wg_tunnels %}
+{%     if t.a.host == m_node %}
+      - targets:
+          - "{{ t.b.ip }}"
+        labels:
+          instance: "{{ m_node }}"
+          site: "{{ m_hv.site }}"
+          role: mysql
+          path: "{{ t.b.host }}"
+{%     endif %}
+{%   endfor %}
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: target
+      - target_label: __address__
+        replacement: "{{ m_hv.lab_links.mgmt }}:{{ exporter_ports.blackbox }}"
+
+  - job_name: blackbox-loopback-{{ m_node }}
+    metrics_path: /probe
+    params:
+      module: [icmp_loopback]
+    static_configs:
+{%   for peer_node in groups['mysql'] %}
+{%     if peer_node != m_node %}
+{%       set peer_hv = hostvars[peer_node] %}
+      - targets:
+          - "{{ peer_hv.loopback_ip }}"
+        labels:
+          instance: "{{ m_node }}"
+          site: "{{ m_hv.site }}"
+          role: mysql
+          path: e2e
+{%     endif %}
+{%   endfor %}
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: target
+      - target_label: __address__
+        replacement: "{{ m_hv.lab_links.mgmt }}:{{ exporter_ports.blackbox }}"
+
+  - job_name: blackbox-mysql-tcp-{{ m_node }}
+    metrics_path: /probe
+    params:
+      module: [tcp_connect]
+    static_configs:
+{%   for peer_node in groups['mysql'] %}
+{%     if peer_node != m_node %}
+{%       set peer_hv = hostvars[peer_node] %}
+      - targets:
+          - "{{ peer_hv.loopback_ip }}:3306"
+        labels:
+          instance: "{{ m_node }}"
+          site: "{{ m_hv.site }}"
+          role: mysql
+          path: mysql
+{%     endif %}
+{%   endfor %}
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: target
+      - target_label: __address__
+        replacement: "{{ m_hv.lab_links.mgmt }}:{{ exporter_ports.blackbox }}"
+{% endfor %}
