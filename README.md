@@ -11,10 +11,10 @@ The platform interconnects two simulated geographic database sites (`mysql-1` an
 | Requirement / Item | Description | Status | Implementation Links |
 |---|---|---|---|
 | **Part 1: Network & Routing** | Redundant relays, dynamic failover, MTU & keepalives | Done | [roles/wireguard/](roles/wireguard/), [roles/frr/](roles/frr/), [docs/architecture.md](docs/architecture.md) |
-| ↳ WireGuard server failure | Relay down; BFD detects and BGP fails over to surviving relay | In progress (manual run: kill 0.21 s, pause 0.95 s; automated suite in progress) | [docs/architecture.md](docs/architecture.md) |
-| ↳ Network path failure | Underlay transit path broken; BFD detects and route shifts | In progress (automated suite in progress) | [docs/architecture.md](docs/architecture.md) |
-| ↳ End-to-end connectivity loss | Both paths down; AllPathsDown alert fires and replication waits | In progress (automated suite in progress) | [docs/runbooks/AllPathsDown.md](docs/runbooks/AllPathsDown.md) |
-| ↳ Path recovery after failure | Primary path restores; BGP re-establishes and traffic returns | In progress (manual run: 1.6 s failback; automated suite in progress) | [docs/architecture.md](docs/architecture.md) |
+| ↳ WireGuard server failure | Relay down; BFD detects and BGP fails over to surviving relay | Done | [tests/chaos/test_scenarios.py](tests/chaos/test_scenarios.py), [docs/results.md](docs/results.md) |
+| ↳ Network path failure | Underlay transit path broken; BFD detects and route shifts | Done | [tests/chaos/test_scenarios.py](tests/chaos/test_scenarios.py), [docs/results.md](docs/results.md) |
+| ↳ End-to-end connectivity loss | Both paths down; AllPathsDown alert fires and replication waits | Done | [tests/chaos/test_scenarios.py](tests/chaos/test_scenarios.py), [docs/results.md](docs/results.md), [docs/runbooks/AllPathsDown.md](docs/runbooks/AllPathsDown.md) |
+| ↳ Path recovery after failure | Primary path restores; BGP re-establishes and traffic returns | Done | [tests/chaos/test_scenarios.py](tests/chaos/test_scenarios.py), [docs/results.md](docs/results.md) |
 | **Part 2: MySQL HA** | MySQL 8.4 GTID replication between loopbacks, read-only replica | Done | [roles/mysql/](roles/mysql/), [docs/adr/0003-loopback-addressing-source-rewrite.md](docs/adr/0003-loopback-addressing-source-rewrite.md), [docs/adr/0005-no-automatic-db-promotion.md](docs/adr/0005-no-automatic-db-promotion.md) |
 | **Part 3: Monitoring & Alerting** | Prometheus, Alertmanager, Grafana, exporters, runbooks | Done | [roles/monitoring/](roles/monitoring/), [roles/exporters/](roles/exporters/), [monitoring/prometheus/rules/alerts.yml](monitoring/prometheus/rules/alerts.yml), [docs/runbooks/](docs/runbooks/) |
 | **Part 4: Logs & Troubleshooting** | Centralized logs with Loki/Alloy, netlink route-monitor, wg-watch | Done | [roles/logging/](roles/logging/), [docs/logging.md](docs/logging.md) |
@@ -25,10 +25,10 @@ The platform interconnects two simulated geographic database sites (`mysql-1` an
 | **Bonus 3: ECMP Load Balancing** | Multipath relax, dual active next-hops toggle | Done | [roles/frr/templates/frr.conf.j2](roles/frr/templates/frr.conf.j2) (`routing_mode: ecmp`) |
 | **Bonus 4: Routing Security** | TCP MD5 auth, GTSM (TTL 1), prefix lists, non-transit filtering | Done | [roles/frr/templates/frr.conf.j2](roles/frr/templates/frr.conf.j2) |
 | **Bonus 5: Automated Failback** | Done: BGP returns traffic to wg-1 automatically (1.6 s); a hold-down against flapping is in progress | Done | [docs/architecture.md](docs/architecture.md) |
-| **Bonus 6: Automated Failure Tests** | Automated chaos test suite running failure scenarios | In progress | [Makefile](Makefile) (`make chaos`) |
+| **Bonus 6: Automated Failure Tests** | Automated chaos test suite running failure scenarios | Done | [tests/chaos/test_scenarios.py](tests/chaos/test_scenarios.py), [docs/results.md](docs/results.md) |
 | **Bonus 7: Automated Troubleshooting**| Automated diagnostic collector & alertmanager webhook | In progress | |
 | **Bonus 8: Integration Tests** | 138 automated pytest testinfra integration tests | Done | [tests/integration/](tests/integration/) |
-| **Bonus 9: Root Cause Postmortems** | Problem log in docs/notes.md; postmortems in progress | In progress | [docs/notes.md](docs/notes.md) |
+| **Bonus 9: Root Cause Postmortems** | Four postmortems of real incidents, plus the problem log in docs/notes.md | Done | [docs/postmortems/](docs/postmortems/) |
 
 ---
 
@@ -104,8 +104,9 @@ flowchart TB
 make deps        # Create virtualenv and install Ansible collections
 make up          # Build image and launch entire lab (idempotent, second run changed=0)
 make test        # Run integration test suite (138 tests)
-make chaos       # Run automated failure and chaos test suite (in progress)
+make chaos       # Run automated failure and chaos test suite
 make lint        # Run yamllint, ansible-lint (production profile), and shellcheck
+make clean       # Remove lab, volumes, and build artifacts cleanly
 make down        # Destroy lab containers and networks cleanly
 ```
 
@@ -119,15 +120,22 @@ make down        # Destroy lab containers and networks cleanly
 
 ## Measured Results
 
-Baseline performance recorded on manual test runs:
-- **Failover on `docker kill wg-1`:** 0.21 s
-- **Failover on `docker pause wg-1`:** 0.95 s (BFD)
-- **Failback to `wg-1`:** 1.6 s (6.7 s including container boot)
-- **Packet loss during failover:** 0 lost pings at 50 ms test intervals in those manual runs
-- **Host reboot recovery:** A full host reboot recovered everything without intervention: BGP Established, path via `wg-1` with loopback source, replication running, 22/22 Prometheus targets up.
-- **Integration test coverage:** 138 integration tests pass and a second `make up` changes nothing.
+- From `make clean` to a fully deployed lab: `make up` about 1 minute; a second run changes nothing on any host.
+- 138 integration tests pass (`make test`), on this machine and in CI.
+- A full host reboot recovered everything without intervention: BGP Established, traffic via wg-1 with the loopback as source, replication running, every Prometheus target up.
 
-The full measured table will live in [docs/results.md](docs/results.md) (generated by `make chaos`).
+Automated failure scenarios from `make chaos` (generated into [docs/results.md](docs/results.md)):
+
+| Scenario | Switch (s) | Lost Pings | Failback (s) | Seq OK | Notes |
+|:---|:---:|:---:|:---:|:---:|:---|
+| 1. wg-1 crash | 0.099 | 0 | 6.631 | PASS | Switched in 0.099s, failed back in 6.631s, zero reconnects, no seq gaps |
+| 2. wg-1 hang | 0.920 | 0 | 1.545 | PASS | BFD failover in 0.92s, unpause failback in 1.545s, no seq gaps |
+| 3. silent path blackhole | 1.154 | 8 | 2.097 | PASS | wg-via1 stayed UP, BFD switch in 1.154s, failback in 2.097s, no seq gaps |
+| 4. degraded path | 1.742 | 265 | 1.847 | PASS | 15 path changes during 60s of 30% netem loss, replication intact with no gaps |
+| 5. end-to-end failure | - | - | - | PASS | AllPathsDown fired within 90s, Replica IO left Yes, primary accepted all writes |
+| 6. recovery from 5 | - | - | 4.887 | PASS | Replication caught up in 4.887s via GTID, all seq IDs verified without gaps |
+| 7. routing daemon failure | 0.180 | 1 | 11.270 | PASS | Tunnel stayed up, switch in 0.18s, watchfrr restored bgpd in 11.27s, no gaps |
+| 8. MySQL down, not the network | - | 0 | - | PASS | BGP stayed up, path stayed wg-1, MySQL alerts fired, AllPathsDown did not fire |
 
 ---
 
