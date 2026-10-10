@@ -1,0 +1,268 @@
+---
+- name: Create MySQL config directories
+  ansible.builtin.file:
+    path: "{{ lab_build_dir }}/mysql/{{ item }}/conf.d"
+    state: directory
+    mode: "0755"
+  loop: "{{ mysql_nodes }}"
+
+- name: Check if replica container exists
+  community.docker.docker_container_info:
+    name: "{{ mysql_replica }}-db"
+  register: mysql_replica_container_info
+
+- name: Set replica initialization fact
+  ansible.builtin.set_fact:
+    mysql_replica_initialized: "{{ mysql_replica_container_info.exists }}"
+
+- name: Render sos.cnf for MySQL nodes
+  ansible.builtin.template:
+    src: sos.cnf.j2
+    dest: "{{ lab_build_dir }}/mysql/{{ mysql_node }}/conf.d/sos.cnf"
+    mode: "0644"
+  loop: "{{ mysql_nodes }}"
+  loop_control:
+    loop_var: mysql_node
+
+- name: Render MySQL compose file
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ lab_build_dir }}/mysql/compose.yml"
+    mode: "0644"
+
+- name: Bring up MySQL compose project
+  community.docker.docker_compose_v2:
+    project_src: "{{ lab_build_dir }}/mysql"
+    project_name: "{{ lab_project }}-mysql"
+    state: present
+    wait: true
+    wait_timeout: 120
+
+- name: Check repl user on primary
+  community.docker.docker_container_exec:
+    container: "{{ mysql_primary }}-db"
+    argv:
+      - mysql
+      - -u
+      - root
+      - -N
+      - -B
+      - -e
+      - "SELECT count(*) FROM mysql.user WHERE user = 'repl' AND host = '{{ hostvars[mysql_replica].loopback_ip }}';"
+    env:
+      MYSQL_PWD: "{{ mysql_root_password }}"
+  register: mysql_repl_user_check
+  changed_when: false
+  no_log: true
+
+- name: Create repl user on primary
+  community.docker.docker_container_exec:
+    container: "{{ mysql_primary }}-db"
+    argv:
+      - mysql
+      - -u
+      - root
+      - -N
+      - -B
+      - -e
+      - >-
+        CREATE USER 'repl'@'{{ hostvars[mysql_replica].loopback_ip }}'
+        IDENTIFIED WITH caching_sha2_password BY '{{ mysql_repl_password }}' REQUIRE SSL;
+        GRANT REPLICATION SLAVE ON *.* TO 'repl'@'{{ hostvars[mysql_replica].loopback_ip }}';
+    env:
+      MYSQL_PWD: "{{ mysql_root_password }}"
+  when: mysql_repl_user_check.stdout.strip() == '0'
+  no_log: true
+
+- name: Check exporter user on primary
+  community.docker.docker_container_exec:
+    container: "{{ mysql_primary }}-db"
+    argv:
+      - mysql
+      - -u
+      - root
+      - -N
+      - -B
+      - -e
+      - "SELECT count(*) FROM mysql.user WHERE user = 'exporter' AND host = '127.0.0.1';"
+    env:
+      MYSQL_PWD: "{{ mysql_root_password }}"
+  register: mysql_exporter_user_check
+  changed_when: false
+  no_log: true
+
+- name: Create exporter user on primary
+  community.docker.docker_container_exec:
+    container: "{{ mysql_primary }}-db"
+    argv:
+      - mysql
+      - -u
+      - root
+      - -N
+      - -B
+      - -e
+      - >-
+        CREATE USER 'exporter'@'127.0.0.1'
+        IDENTIFIED WITH caching_sha2_password BY '{{ mysql_exporter_password }}' WITH MAX_USER_CONNECTIONS 3;
+        GRANT PROCESS, REPLICATION CLIENT, SELECT ON *.* TO 'exporter'@'127.0.0.1';
+    env:
+      MYSQL_PWD: "{{ mysql_root_password }}"
+  when: mysql_exporter_user_check.stdout.strip() == '0'
+  no_log: true
+
+- name: Check sre.heartbeat table on primary
+  community.docker.docker_container_exec:
+    container: "{{ mysql_primary }}-db"
+    argv:
+      - mysql
+      - -u
+      - root
+      - -N
+      - -B
+      - -e
+      - "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'sre' AND table_name = 'heartbeat';"
+    env:
+      MYSQL_PWD: "{{ mysql_root_password }}"
+  register: mysql_heartbeat_table_check
+  changed_when: false
+  no_log: true
+
+- name: Create sre database and heartbeat table on primary
+  community.docker.docker_container_exec:
+    container: "{{ mysql_primary }}-db"
+    argv:
+      - mysql
+      - -u
+      - root
+      - -N
+      - -B
+      - -e
+      - >-
+        CREATE DATABASE IF NOT EXISTS sre;
+        CREATE TABLE IF NOT EXISTS sre.heartbeat (ts varchar(26) NOT NULL, server_id int unsigned NOT NULL PRIMARY KEY);
+    env:
+      MYSQL_PWD: "{{ mysql_root_password }}"
+  when: mysql_heartbeat_table_check.stdout.strip() == '0'
+  no_log: true
+
+- name: Check sre.heartbeat_tick event on primary
+  community.docker.docker_container_exec:
+    container: "{{ mysql_primary }}-db"
+    argv:
+      - mysql
+      - -u
+      - root
+      - -N
+      - -B
+      - -e
+      - "SELECT count(*) FROM information_schema.events WHERE event_schema = 'sre' AND event_name = 'heartbeat_tick';"
+    env:
+      MYSQL_PWD: "{{ mysql_root_password }}"
+  register: mysql_heartbeat_event_check
+  changed_when: false
+  no_log: true
+
+- name: Create sre.heartbeat_tick event on primary
+  community.docker.docker_container_exec:
+    container: "{{ mysql_primary }}-db"
+    argv:
+      - mysql
+      - -u
+      - root
+      - -N
+      - -B
+      - -e
+      - >-
+        CREATE EVENT sre.heartbeat_tick ON SCHEDULE EVERY 1 SECOND DO
+        REPLACE INTO sre.heartbeat (ts, server_id) VALUES (DATE_FORMAT(UTC_TIMESTAMP(6), '%Y-%m-%dT%H:%i:%s.%f'), @@server_id);
+    env:
+      MYSQL_PWD: "{{ mysql_root_password }}"
+  when: mysql_heartbeat_event_check.stdout.strip() == '0'
+  no_log: true
+
+- name: Check replication configuration on replica
+  community.docker.docker_container_exec:
+    container: "{{ mysql_replica }}-db"
+    argv:
+      - mysql
+      - -u
+      - root
+      - -N
+      - -B
+      - -e
+      - "SELECT count(*) FROM performance_schema.replication_connection_configuration;"
+    env:
+      MYSQL_PWD: "{{ mysql_root_password }}"
+  register: mysql_replica_config_check
+  changed_when: false
+  no_log: true
+
+- name: Configure replication source on replica
+  community.docker.docker_container_exec:
+    container: "{{ mysql_replica }}-db"
+    argv:
+      - mysql
+      - -u
+      - root
+      - -N
+      - -B
+      - -e
+      - >-
+        CHANGE REPLICATION SOURCE TO
+        SOURCE_HOST='{{ hostvars[mysql_primary].loopback_ip }}',
+        SOURCE_PORT=3306,
+        SOURCE_USER='repl',
+        SOURCE_PASSWORD='{{ mysql_repl_password }}',
+        SOURCE_AUTO_POSITION=1,
+        SOURCE_SSL=1,
+        SOURCE_CONNECT_RETRY=5,
+        SOURCE_RETRY_COUNT=86400,
+        SOURCE_HEARTBEAT_PERIOD=2,
+        SOURCE_BIND='{{ hostvars[mysql_replica].loopback_ip }}';
+        START REPLICA;
+    env:
+      MYSQL_PWD: "{{ mysql_root_password }}"
+  when: mysql_replica_config_check.stdout.strip() == '0'
+  no_log: true
+
+- name: Check super_read_only on replica
+  community.docker.docker_container_exec:
+    container: "{{ mysql_replica }}-db"
+    argv:
+      - mysql
+      - -u
+      - root
+      - -N
+      - -B
+      - -e
+      - "SELECT @@super_read_only;"
+    env:
+      MYSQL_PWD: "{{ mysql_root_password }}"
+  register: mysql_replica_super_read_only_check
+  changed_when: false
+  no_log: true
+
+- name: Enable super_read_only on replica
+  community.docker.docker_container_exec:
+    container: "{{ mysql_replica }}-db"
+    argv:
+      - mysql
+      - -u
+      - root
+      - -N
+      - -B
+      - -e
+      - "SET @@GLOBAL.read_only = ON; SET @@GLOBAL.super_read_only = ON;"
+    env:
+      MYSQL_PWD: "{{ mysql_root_password }}"
+  when: mysql_replica_super_read_only_check.stdout.strip() == '0'
+  no_log: true
+
+- name: Render final sos.cnf for replica
+  ansible.builtin.template:
+    src: sos.cnf.j2
+    dest: "{{ lab_build_dir }}/mysql/{{ mysql_replica }}/conf.d/sos.cnf"
+    mode: "0644"
+  vars:
+    mysql_node: "{{ mysql_replica }}"
+    mysql_replica_initialized: true
