@@ -1,9 +1,16 @@
 import datetime
+import json
+import pathlib
 import subprocess
 import time
+import urllib.request
 
 import pytest
 import testinfra
+import yaml
+
+LAB_VARS = pathlib.Path(__file__).parents[2] / "inventory/docker/group_vars/all/lab.yml"
+PROMETHEUS = yaml.safe_load(LAB_VARS.read_text())["mgmt_services"]["prometheus"]
 
 LOOPBACKS = {
     "mysql-1": "10.255.0.1",
@@ -90,6 +97,15 @@ def test_restart_restores_state():
     else:
         pytest.fail("mysql-1 sidecars did not come back after the node restarted")
 
+    # later tests assume a converged lab: BGP back up and every scrape target healthy
+    deadline = time.time() + 90
+    while time.time() < deadline:
+        if bgp_established("mysql-1") and prometheus_targets_up():
+            break
+        time.sleep(2)
+    else:
+        pytest.fail("BGP or Prometheus targets did not recover after mysql-1 restarted")
+
     # leave the lab as we found it: the healer restarts mysql-1-db one by one with the
     # other sidecars, so wait for a db that started after the node, then for replication
     node_started = started_at("mysql-1")
@@ -120,3 +136,21 @@ def replica_io_running():
         capture_output=True, text=True,
     ).stdout
     return "Replica_IO_Running: Yes" in out and "Replica_SQL_Running: Yes" in out
+
+
+def bgp_established(name):
+    out = node(name).run("vtysh -c 'show ip bgp summary json'").stdout
+    try:
+        peers = json.loads(out)["ipv4Unicast"]["peers"]
+    except (ValueError, KeyError):
+        return False
+    return len(peers) == 2 and all(p["state"] == "Established" for p in peers.values())
+
+
+def prometheus_targets_up():
+    try:
+        with urllib.request.urlopen(f"http://{PROMETHEUS}:9090/api/v1/targets", timeout=5) as resp:
+            targets = json.load(resp)["data"]["activeTargets"]
+    except OSError:
+        return False
+    return bool(targets) and all(t["health"] == "up" for t in targets)
