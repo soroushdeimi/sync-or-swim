@@ -84,6 +84,24 @@ def test_restart_restores_state():
     # sidecars joined the old netns; the healer must restart them into the new one
     while time.time() < deadline:
         if subprocess.run(["curl", "-sf", "-m", "2", "-o", "/dev/null", "http://172.31.100.11:9100/metrics"]).returncode == 0:
-            return
+            break
         time.sleep(1)
-    pytest.fail("mysql-1 sidecars did not come back after the node restarted")
+    else:
+        pytest.fail("mysql-1 sidecars did not come back after the node restarted")
+
+    # leave the lab as we found it: the primary is back and the replica reconnected
+    deadline = time.time() + 120
+    while time.time() < deadline:
+        health = subprocess.run(["docker", "inspect", "-f", "{{.State.Health.Status}}", "mysql-1-db"], capture_output=True, text=True).stdout.strip()
+        if health == "healthy" and replica_io_running():
+            return
+        time.sleep(2)
+    pytest.fail("replication did not recover after mysql-1 restarted")
+
+
+def replica_io_running():
+    out = subprocess.run(
+        ["docker", "exec", "mysql-2-db", "sh", "-c", 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot -e "SHOW REPLICA STATUS\\G"'],
+        capture_output=True, text=True,
+    ).stdout
+    return "Replica_IO_Running: Yes" in out and "Replica_SQL_Running: Yes" in out

@@ -10,8 +10,6 @@ import pytest
 import testinfra
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-SECRETS_DIR = REPO_ROOT / "build" / "secrets"
-ROOT_PASSWORD = (SECRETS_DIR / "mysql_root").read_text().strip()
 
 
 def db_node(name):
@@ -19,14 +17,11 @@ def db_node(name):
 
 
 def mysql_query(container, query):
-    """Executes a SQL query inside a MySQL db container via mysql client."""
-    cmd = [
-        "docker", "exec",
-        "-e", f"MYSQL_PWD={ROOT_PASSWORD}",
-        container,
-        "mysql", "-u", "root", "-N", "-B", "-e", query,
-    ]
-    res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    # the password stays inside the container so it never shows up in test output
+    cmd = ["docker", "exec", container, "sh", "-c", 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot -NB -e "$0"', query]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode != 0:
+        raise AssertionError(f"query failed on {container}: {query[:80]}: {res.stderr.strip()}")
     return res.stdout.strip()
 
 
@@ -64,12 +59,7 @@ def test_replica_super_read_only():
 
 def test_replica_status():
     status_raw = subprocess.check_output(
-        [
-            "docker", "exec",
-            "-e", f"MYSQL_PWD={ROOT_PASSWORD}",
-            "mysql-2-db",
-            "mysql", "-u", "root", "-e", "SHOW REPLICA STATUS\\G",
-        ],
+        ["docker", "exec", "mysql-2-db", "sh", "-c", 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot -e "SHOW REPLICA STATUS\\G"'],
         text=True,
     )
     status = parse_replica_status(status_raw)
