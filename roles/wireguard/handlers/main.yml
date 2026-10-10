@@ -1,0 +1,4 @@
+---
+- name: Run sos-apply
+  ansible.builtin.command: /usr/local/bin/sos-apply
+  changed_when: true
