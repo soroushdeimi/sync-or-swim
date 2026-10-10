@@ -1,0 +1,114 @@
+{% set frr_neighbors = [] %}
+{% for tunnel in wg_tunnels %}
+{%   if tunnel.a.host == inventory_hostname %}
+{%     set _ = frr_neighbors.append({'peer_host': tunnel.b.host, 'peer_ip': tunnel.b.ip, 'local_ip': tunnel.a.ip, 'tunnel_id': tunnel.id}) %}
+{%   elif tunnel.b.host == inventory_hostname %}
+{%     set _ = frr_neighbors.append({'peer_host': tunnel.a.host, 'peer_ip': tunnel.a.ip, 'local_ip': tunnel.b.ip, 'tunnel_id': tunnel.id}) %}
+{%   endif %}
+{% endfor %}
+frr defaults traditional
+hostname {{ inventory_hostname }}
+log file /var/run/frr/frr.log informational
+log timestamp precision 3
+!
+bfd
+ profile wg-tunnels
+  receive-interval {{ bfd_receive_interval }}
+  transmit-interval {{ bfd_transmit_interval }}
+  detect-multiplier {{ bfd_detect_multiplier }}
+ exit
+!
+router bgp {{ bgp_asn }}
+ bgp router-id {{ loopback_ip }}
+ bgp log-neighbor-changes
+ no bgp default ipv4-unicast
+{% if routing_mode == 'ecmp' and inventory_hostname in groups['mysql'] %}
+ bgp bestpath as-path multipath-relax
+{% endif %}
+{% for n in frr_neighbors %}
+ neighbor {{ n.peer_ip }} remote-as {{ hostvars[n.peer_host].bgp_asn }}
+ neighbor {{ n.peer_ip }} update-source {{ n.local_ip }}
+ neighbor {{ n.peer_ip }} password {{ bgp_password }}
+ neighbor {{ n.peer_ip }} ttl-security hops 1
+ neighbor {{ n.peer_ip }} bfd profile wg-tunnels
+{% endfor %}
+ !
+ address-family ipv4 unicast
+  network {{ loopback_ip }}/32
+{% if routing_mode == 'ecmp' and inventory_hostname in groups['mysql'] %}
+  maximum-paths 2
+{% endif %}
+{% for n in frr_neighbors %}
+  neighbor {{ n.peer_ip }} activate
+  neighbor {{ n.peer_ip }} maximum-prefix 10
+{%   if inventory_hostname in groups['mysql'] %}
+  neighbor {{ n.peer_ip }} prefix-list PL-IN in
+  neighbor {{ n.peer_ip }} prefix-list PL-OUT out
+{%     if routing_mode == 'active_backup' %}
+{%       if n.peer_host == primary_relay %}
+  neighbor {{ n.peer_ip }} route-map RM-IN-PRIMARY in
+{%       else %}
+  neighbor {{ n.peer_ip }} route-map RM-IN-BACKUP in
+{%       endif %}
+{%     else %}
+  neighbor {{ n.peer_ip }} route-map RM-IN-ECMP in
+{%     endif %}
+  neighbor {{ n.peer_ip }} route-map RM-OUT out
+{%   else %}
+  neighbor {{ n.peer_ip }} prefix-list PL-IN-{{ n.peer_host }} in
+  neighbor {{ n.peer_ip }} prefix-list PL-OUT out
+  neighbor {{ n.peer_ip }} route-map RM-IN-{{ n.peer_host }} in
+  neighbor {{ n.peer_ip }} route-map RM-OUT out
+{%   endif %}
+{% endfor %}
+ exit-address-family
+exit
+!
+{% if inventory_hostname in groups['mysql'] %}
+ip prefix-list PL-OUT seq 10 permit {{ loopback_ip }}/32
+ip prefix-list PL-IN seq 10 permit 10.255.0.0/24 ge 32
+!
+route-map RM-OUT permit 10
+ match ip address prefix-list PL-OUT
+exit
+!
+{%   if routing_mode == 'active_backup' %}
+route-map RM-IN-PRIMARY permit 10
+ match ip address prefix-list PL-IN
+ set local-preference 200
+exit
+!
+route-map RM-IN-BACKUP permit 10
+ match ip address prefix-list PL-IN
+ set local-preference 100
+exit
+!
+{%   else %}
+route-map RM-IN-ECMP permit 10
+ match ip address prefix-list PL-IN
+exit
+!
+{%   endif %}
+{% endif %}
+{% if inventory_hostname in groups['relays'] %}
+{%   for n in frr_neighbors %}
+ip prefix-list PL-IN-{{ n.peer_host }} seq 10 permit {{ hostvars[n.peer_host].loopback_ip }}/32
+!
+route-map RM-IN-{{ n.peer_host }} permit 10
+ match ip address prefix-list PL-IN-{{ n.peer_host }}
+exit
+!
+{%   endfor %}
+ip prefix-list PL-OUT seq 10 permit 10.255.0.0/24 ge 32
+!
+route-map RM-OUT permit 10
+ match ip address prefix-list PL-OUT
+exit
+!
+{% endif %}
+route-map SET-SRC permit 10
+ set src {{ loopback_ip }}
+exit
+!
+ip protocol bgp route-map SET-SRC
+!

@@ -1,0 +1,29 @@
+---
+- name: Create FRR configuration directory
+  ansible.builtin.file:
+    path: "{{ frr_config_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Render FRR daemons configuration
+  ansible.builtin.template:
+    src: daemons.j2
+    dest: "{{ frr_config_dir }}/daemons"
+    mode: "0644"
+  notify: Apply FRR configuration
+
+- name: Render FRR main configuration
+  ansible.builtin.template:
+    src: frr.conf.j2
+    dest: "{{ frr_config_dir }}/frr.conf"
+    mode: "0640"
+  # holds the BGP password
+  diff: false
+  notify: Apply FRR configuration
+
+- name: Render FRR init script
+  ansible.builtin.template:
+    src: 20-frr.sh.j2
+    dest: "{{ frr_init_dir }}/20-frr.sh"
+    mode: "0755"
+  notify: Apply FRR configuration
