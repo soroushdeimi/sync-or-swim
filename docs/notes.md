@@ -36,3 +36,9 @@ Real problems hit while building the lab. Each one is a candidate for a postmort
 - **Symptom:** the route-change test passed in 0.09 s.
 - **Cause:** it searched Loki's last hour for a fixed IP, so lines from earlier runs satisfied it.
 - **Fix:** a random address per run and a query start time taken before the change.
+
+## 2026-10-10: `docker pause` is not a server crash
+
+- **Observation:** pausing wg-1 moved traffic to wg-2 in 0.95 s with no lost pings.
+- **Why:** pause freezes processes, but WireGuard and forwarding live in the kernel, so wg-1 kept forwarding. Only bgpd/bfdd froze, and BFD noticed.
+- **So:** `pause` simulates a control-plane hang. A real crash is `docker kill` (0.21 s to switch in a first run) or a blackholed path. The chaos suite covers both separately.
