@@ -1,5 +1,3 @@
-"""Milestone 1: the lab is up, addressed, isolated per path, and survives restarts."""
-
 import subprocess
 import time
 
