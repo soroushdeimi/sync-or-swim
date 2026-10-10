@@ -295,8 +295,22 @@ def seq_writer():
 def steady_state(request):
     """Guaranteed pre-check and guaranteed restore in teardown."""
     request.addfinalizer(restore_lab)
-    check_steady_state()
+    wait_for_steady_state()
     yield
+
+
+def wait_for_steady_state(timeout=60):
+    # a previous test may have just reapplied config; give BGP/BFD time to settle,
+    # but a lab that never converges (e.g. wg-1 paused) still fails
+    deadline = time.time() + timeout
+    while True:
+        try:
+            check_steady_state()
+            return
+        except AssertionError:
+            if time.time() > deadline:
+                raise
+            time.sleep(2)
 
 
 def pytest_configure(config):

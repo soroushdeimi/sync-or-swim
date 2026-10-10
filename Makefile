@@ -1,7 +1,7 @@
 VENV ?= .venv
 BIN  := $(VENV)/bin
 
-.PHONY: help venv deps up deploy down test lint ps shell image image-save image-load idempotency chaos
+.PHONY: help venv deps up deploy down test lint ps shell image image-save image-load idempotency chaos clean
 
 help: ## Show targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-8s %s\n", $$1, $$2}'
@@ -20,6 +20,11 @@ up: venv ## Build the image and bring the lab up (idempotent)
 	$(BIN)/ansible-playbook playbooks/site.yml
 
 deploy: up ## Alias for up until the service roles exist
+
+clean: venv ## Remove the lab, its volumes and everything in build/ (containers own some files)
+	$(BIN)/ansible-playbook playbooks/destroy.yml -e destroy_volumes=true
+	docker run --rm -v "$(CURDIR)/build:/build" $$(grep -oP '^sidecar_healer_image: \K.*' inventory/docker/group_vars/all/lab.yml) sh -c 'rm -rf /build/* /build/.[!.]*' 2>/dev/null || true
+	rm -rf build
 
 down: ## Remove all lab containers and networks
 	$(BIN)/ansible-playbook playbooks/destroy.yml

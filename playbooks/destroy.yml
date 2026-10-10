@@ -2,11 +2,26 @@
 - name: Tear the lab down
   hosts: lab
   gather_facts: false
+  vars:
+    # sidecar projects first: they live in the nodes' namespaces
+    destroy_projects: [logging, monitoring, exporters, mysql]
+    destroy_volumes: false
   tasks:
-    - name: Remove containers and networks
+    - name: Remove the sidecar and stack projects
+      community.docker.docker_compose_v2:
+        project_src: "{{ lab_build_dir }}/{{ item }}"
+        project_name: "{{ lab_project }}-{{ item }}"
+        state: absent
+        remove_orphans: true
+        remove_volumes: "{{ destroy_volumes | bool }}"
+      loop: "{{ destroy_projects }}"
+      when: (lab_build_dir ~ '/' ~ item ~ '/compose.yml') is file
+
+    - name: Remove the nodes and networks
       community.docker.docker_compose_v2:
         project_src: "{{ lab_build_dir }}"
         project_name: "{{ lab_project }}"
         state: absent
         remove_orphans: true
+        remove_volumes: "{{ destroy_volumes | bool }}"
       when: (lab_build_dir ~ '/compose.yml') is file
