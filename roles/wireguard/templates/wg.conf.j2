@@ -1,0 +1,9 @@
+[Interface]
+PrivateKey = {{ (wireguard_private_key_slurp.content | b64decode).strip() }}
+ListenPort = {{ item.port }}
+
+[Peer]
+PublicKey = {{ hostvars[item.peer_host].wireguard_public_key }}
+Endpoint = {{ hostvars[item.peer_host].lab_links[item.underlay] }}:{{ item.peer_port }}
+AllowedIPs = 0.0.0.0/0
+PersistentKeepalive = {{ wg_keepalive }}

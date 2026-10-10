@@ -1,0 +1,11 @@
+#!/bin/bash
+# {{ ansible_managed }}
+set -euo pipefail
+
+{% for tunnel in wireguard_local_tunnels %}
+ip link show {{ tunnel.ifname }} >/dev/null 2>&1 || ip link add {{ tunnel.ifname }} type wireguard
+wg setconf {{ tunnel.ifname }} /etc/sos/wireguard/{{ tunnel.ifname }}.conf
+ip addr replace {{ tunnel.ip }}/31 dev {{ tunnel.ifname }}
+ip link set {{ tunnel.ifname }} mtu {{ wg_mtu }} up
+
+{% endfor %}

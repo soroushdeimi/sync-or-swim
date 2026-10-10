@@ -1,0 +1,76 @@
+---
+- name: Ensure WireGuard directory exists
+  ansible.builtin.file:
+    path: /etc/sos/wireguard
+    state: directory
+    mode: "0700"
+
+- name: Generate WireGuard private key
+  ansible.builtin.shell:
+    cmd: umask 077; wg genkey > /etc/sos/wireguard/private.key
+    creates: /etc/sos/wireguard/private.key
+  no_log: true
+
+- name: Read WireGuard public key
+  ansible.builtin.shell:
+    cmd: wg pubkey < /etc/sos/wireguard/private.key
+  register: wireguard_pubkey_cmd
+  changed_when: false
+  check_mode: false
+
+- name: Set WireGuard public key fact
+  ansible.builtin.set_fact:
+    wireguard_public_key: "{{ wireguard_pubkey_cmd.stdout | trim }}"
+
+- name: Read WireGuard private key
+  ansible.builtin.slurp:
+    src: /etc/sos/wireguard/private.key
+  register: wireguard_private_key_slurp
+  no_log: true
+
+- name: Collect local WireGuard tunnel endpoints
+  ansible.builtin.set_fact:
+    wireguard_local_tunnels: >-
+      {%- set results = [] -%}
+      {%- for tunnel in wg_tunnels -%}
+        {%- if tunnel.a.host == inventory_hostname -%}
+          {%- set _ = results.append({
+                'ifname': tunnel.a.ifname,
+                'ip': tunnel.a.ip,
+                'port': tunnel.a.port,
+                'peer_host': tunnel.b.host,
+                'peer_ip': tunnel.b.ip,
+                'peer_port': tunnel.b.port,
+                'underlay': tunnel.underlay
+              }) -%}
+        {%- elif tunnel.b.host == inventory_hostname -%}
+          {%- set _ = results.append({
+                'ifname': tunnel.b.ifname,
+                'ip': tunnel.b.ip,
+                'port': tunnel.b.port,
+                'peer_host': tunnel.a.host,
+                'peer_ip': tunnel.a.ip,
+                'peer_port': tunnel.a.port,
+                'underlay': tunnel.underlay
+              }) -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ results }}
+
+- name: Render WireGuard interface configuration
+  ansible.builtin.template:
+    src: wg.conf.j2
+    dest: "/etc/sos/wireguard/{{ item.ifname }}.conf"
+    mode: "0600"
+  diff: false
+  loop: "{{ wireguard_local_tunnels }}"
+  loop_control:
+    label: "{{ item.ifname }}"
+  notify: Run sos-apply
+
+- name: Render WireGuard init script
+  ansible.builtin.template:
+    src: 10-wireguard.sh.j2
+    dest: /etc/sos/init.d/10-wireguard.sh
+    mode: "0755"
+  notify: Run sos-apply
