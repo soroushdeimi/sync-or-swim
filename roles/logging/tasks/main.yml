@@ -1,0 +1,43 @@
+---
+- name: Create logging directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ logging_build_dir }}"
+    - "{{ logging_build_dir }}/loki"
+    - "{{ logging_build_dir }}/alloy"
+    - "{{ logging_build_dir }}/scripts"
+
+- name: Copy Loki configuration
+  ansible.builtin.copy:
+    src: "{{ logging_loki_config_src }}"
+    dest: "{{ logging_build_dir }}/loki/config.yml"
+    mode: "0644"
+
+- name: Render Alloy configuration
+  ansible.builtin.template:
+    src: "{{ logging_alloy_config_src }}"
+    dest: "{{ logging_build_dir }}/alloy/config.alloy"
+    mode: "0644"
+
+- name: Render wg-watch script
+  ansible.builtin.template:
+    src: wg-watch.sh.j2
+    dest: "{{ logging_build_dir }}/scripts/wg-watch.sh"
+    mode: "0755"
+
+- name: Render logging compose project
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ logging_build_dir }}/compose.yml"
+    mode: "0644"
+
+- name: Bring the logging stack up
+  community.docker.docker_compose_v2:
+    project_src: "{{ logging_build_dir }}"
+    project_name: "{{ lab_project }}-logging"
+    state: present
+    wait: true
+    wait_timeout: 120

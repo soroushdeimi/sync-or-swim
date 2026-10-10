@@ -1,0 +1,95 @@
+// {{ ansible_managed }}
+
+discovery.docker "containers" {
+	host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "docker_logs" {
+	targets = discovery.docker.containers.targets
+
+	rule {
+		action        = "keep"
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/?({{ lab_project }}.*|{{ groups['nodes'] | join('.*|') }}.*)"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/?(.*)"
+		target_label  = "container"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/?(.*)"
+		target_label  = "service"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_sos_service"]
+		regex         = "(.+)"
+		target_label  = "service"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/?({{ groups['nodes'] | join('|') }})"
+		target_label  = "node"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_sos_node"]
+		regex         = "(.+)"
+		target_label  = "node"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_sos_site"]
+		regex         = "(.+)"
+		target_label  = "site"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_sos_role"]
+		regex         = "(.+)"
+		target_label  = "role"
+	}
+}
+
+loki.write "local" {
+	endpoint {
+		url = "http://{{ mgmt_services.loki }}:3100/loki/api/v1/push"
+	}
+}
+
+loki.source.docker "default" {
+	host       = "unix:///var/run/docker.sock"
+	targets    = discovery.relabel.docker_logs.output
+	forward_to = [loki.write.local.receiver]
+}
+
+local.file_match "frr_logs" {
+	path_targets = [{
+		__path__ = "{{ lab_run_dir }}/*/frr/frr.log",
+	}]
+}
+
+discovery.relabel "frr" {
+	targets = local.file_match.frr_logs.targets
+
+	rule {
+		target_label = "service"
+		replacement  = "frr"
+	}
+
+	rule {
+		source_labels = ["__path__"]
+		regex         = ".*/([^/]+)/frr/frr\\.log"
+		target_label  = "node"
+	}
+}
+
+loki.source.file "frr" {
+	targets    = discovery.relabel.frr.output
+	forward_to = [loki.write.local.receiver]
+}

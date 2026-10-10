@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Print one line per peer whenever its handshake goes stale or recovers.
+set -u
+
+declare -A last_state
+
+while true; do
+  now=$(date +%s)
+  if out=$(wg show all latest-handshakes 2>/dev/null); then
+    while read -r iface _peer handshake; do
+      [ -z "${iface:-}" ] && continue
+      age=$(( handshake > 0 ? now - handshake : 0 ))
+      if [ "${handshake:-0}" -eq 0 ] || [ "$age" -gt {{ logging_wg_stale_after }} ]; then cur=stale; else cur=up; fi
+      if [ "${last_state[$iface]:-}" != "$cur" ]; then
+        if [ "$cur" = stale ]; then echo "wg peer=$iface state=stale age=$age"; else echo "wg peer=$iface state=up"; fi
+        last_state[$iface]=$cur
+      fi
+    done <<< "$out"
+  fi
+  sleep 2
+done

@@ -1,0 +1,9 @@
+---
+logging_loki_image: "grafana/loki:3.4.2"
+logging_alloy_image: "grafana/alloy:v1.7.1"
+logging_build_dir: "{{ lab_build_dir }}/logging"
+logging_loki_config_src: "{{ lab_root }}/logging/loki/config.yml"
+logging_alloy_config_src: "{{ lab_root }}/logging/alloy/config.alloy.j2"
+
+# seconds without a handshake before a peer counts as stale
+logging_wg_stale_after: 180
