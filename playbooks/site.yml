@@ -1,0 +1,8 @@
+---
+- name: Lab infrastructure (images, networks, containers)
+  hosts: lab
+  gather_facts: false
+  roles:
+    - lab_infra
+
+# Next phases plug in here, in order: wireguard, frr, mysql, monitoring, logging.

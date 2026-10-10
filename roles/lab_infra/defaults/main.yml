@@ -1,0 +1,13 @@
+---
+# Rendered compose project and per-node config volumes (git-ignored).
+lab_infra_build_dir: "{{ playbook_dir }}/../build"
+lab_infra_image_context: "{{ playbook_dir }}/../docker/node"
+
+# The image tag is a hash of the build context, so editing the Dockerfile or
+# the scripts produces a new tag, a rebuild and a container recreate, while
+# an unchanged context keeps the run idempotent.
+lab_infra_image_tag: >-
+  {{ (lookup('file', lab_infra_image_context ~ '/Dockerfile')
+      ~ lookup('file', lab_infra_image_context ~ '/entrypoint.sh')
+      ~ lookup('file', lab_infra_image_context ~ '/sos-apply')) | hash('sha1') | truncate(12, True, '') }}
+lab_infra_image: "{{ lab_project }}/node:{{ lab_infra_image_tag }}"

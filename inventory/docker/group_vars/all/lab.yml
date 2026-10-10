@@ -1,0 +1,30 @@
+---
+# Compose project name; also the prefix for images.
+lab_project: sync-or-swim
+
+# Underlay networks. transit-a and transit-b are the two independent
+# "ISP paths"; mgmt carries monitoring and logs, never replication traffic.
+lab_networks:
+  transit-a:
+    subnet: 172.31.1.0/24
+    internal: true
+    ifname: ul-a
+  transit-b:
+    subnet: 172.31.2.0/24
+    internal: true
+    ifname: ul-b
+  mgmt:
+    subnet: 172.31.100.0/24
+    internal: false
+    ifname: mgmt0
+
+# Namespaced sysctls, set by Docker when the container's namespace is created
+# (/proc/sys is read-only inside the container).
+lab_sysctls:
+  net.ipv4.ip_forward: 1
+  net.ipv4.conf.all.rp_filter: 2
+  net.ipv4.conf.default.rp_filter: 2
+  net.ipv4.fib_multipath_hash_policy: 1
+
+# Header for rendered files.
+ansible_managed: Managed by Ansible (sync-or-swim); local edits will be overwritten.

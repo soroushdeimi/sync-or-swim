@@ -1,0 +1,10 @@
+---
+# A changed init script is applied in place; the container keeps running.
+# Init scripts are idempotent, so re-applying on a just-recreated container is harmless.
+- name: Re-apply node state
+  community.docker.docker_container_exec:
+    container: "{{ item.item }}"
+    command: /usr/local/bin/sos-apply
+  loop: "{{ lab_infra_loopback_scripts.results | selectattr('changed') | list }}"
+  loop_control:
+    label: "{{ item.item }}"

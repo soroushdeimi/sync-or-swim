@@ -1,0 +1,9 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# Stable /32 identity for {{ item }}: BGP advertises it, and replication
+# runs between these addresses so failover only changes the next hop.
+set -euo pipefail
+
+ip link show dummy0 >/dev/null 2>&1 || ip link add dummy0 type dummy
+ip addr replace {{ hostvars[item].loopback_ip }}/32 dev dummy0
+ip link set dummy0 up

@@ -1,0 +1,48 @@
+# {{ ansible_managed }}
+# Rendered by the lab_infra role; do not edit by hand.
+name: {{ lab_project }}
+
+networks:
+{% for net, cfg in lab_networks.items() %}
+  {{ net }}:
+    internal: {{ cfg.internal | lower }}
+    ipam:
+      config:
+        - subnet: {{ cfg.subnet }}
+{% endfor %}
+
+services:
+{% for node in groups['nodes'] %}
+{%   set hv = hostvars[node] %}
+  {{ node }}:
+    image: {{ lab_infra_image }}
+    container_name: {{ node }}
+    hostname: {{ node }}
+    init: true
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+{%   for key, value in lab_sysctls.items() %}
+      {{ key }}: "{{ value }}"
+{%   endfor %}
+    volumes:
+      - ./nodes/{{ node }}:/etc/sos:ro
+    labels:
+      sos.site: "{{ hv.site }}"
+      sos.role: "{{ 'mysql' if node in groups['mysql'] else 'relay' }}"
+    networks:
+{%   for net, ip in hv.lab_links.items() %}
+      {{ net }}:
+        ipv4_address: {{ ip }}
+        interface_name: {{ lab_networks[net].ifname }}
+{%     if net == 'mgmt' %}
+        gw_priority: 100
+{%     endif %}
+{%   endfor %}
+    healthcheck:
+      test: ["CMD", "ip", "-4", "addr", "show", "dev", "dummy0"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+{% endfor %}

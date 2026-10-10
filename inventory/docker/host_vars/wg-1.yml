@@ -1,0 +1,6 @@
+---
+site: path-a
+loopback_ip: 10.255.0.11
+lab_links:
+  transit-a: 172.31.1.21
+  mgmt: 172.31.100.21

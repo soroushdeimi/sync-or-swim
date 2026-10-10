@@ -1,0 +1,7 @@
+---
+site: site2
+loopback_ip: 10.255.0.2
+lab_links:
+  transit-a: 172.31.1.12
+  transit-b: 172.31.2.12
+  mgmt: 172.31.100.12

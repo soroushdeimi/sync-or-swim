@@ -1,0 +1,37 @@
+---
+- name: Build the node image
+  community.docker.docker_image_build:
+    name: "{{ lab_infra_image }}"
+    path: "{{ lab_infra_image_context }}"
+    rebuild: never
+
+- name: Create a config directory for each node
+  ansible.builtin.file:
+    path: "{{ lab_infra_build_dir }}/nodes/{{ item }}/init.d"
+    state: directory
+    mode: "0755"
+  loop: "{{ groups['nodes'] }}"
+
+- name: Render the loopback script for each node
+  ansible.builtin.template:
+    src: 00-loopback.sh.j2
+    dest: "{{ lab_infra_build_dir }}/nodes/{{ item }}/init.d/00-loopback.sh"
+    mode: "0644"
+  loop: "{{ groups['nodes'] }}"
+  register: lab_infra_loopback_scripts
+  notify: Re-apply node state
+
+- name: Render the compose project
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ lab_infra_build_dir }}/compose.yml"
+    mode: "0644"
+
+- name: Bring the lab up
+  community.docker.docker_compose_v2:
+    project_src: "{{ lab_infra_build_dir }}"
+    project_name: "{{ lab_project }}"
+    state: present
+    remove_orphans: true
+    wait: true
+    wait_timeout: 120

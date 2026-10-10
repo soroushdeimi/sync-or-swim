@@ -1,0 +1,11 @@
+#!/bin/bash
+# Apply this node's runtime state (loopback, tunnels, tc, nftables, ...).
+# Every script in /etc/sos/init.d must be idempotent: sos-apply runs on each
+# container start and again whenever Ansible changes a script.
+set -euo pipefail
+
+shopt -s nullglob
+for script in /etc/sos/init.d/*.sh; do
+  echo "sos-apply: running ${script##*/}"
+  bash "$script"
+done
