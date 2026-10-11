@@ -30,7 +30,7 @@ def get_prometheus_alerts():
 
 @pytest.mark.chaos
 def test_scenario_1_wg1_crash(prober, seq_writer):
-    """Scenario 1: wg-1 crash (docker kill wg-1). Failover to wg-via2 within 1.5s, no seq gaps, failback within 30s."""
+    """Scenario 1: wg-1 crash (docker kill wg-1). Failover to wg-via2 within 1.5s, no seq gaps, failback within 60s."""
     seq_writer.start()
     prober.start()
 
@@ -81,8 +81,8 @@ def test_scenario_1_wg1_crash(prober, seq_writer):
     recover_ms = int(time.time() * 1000)
     subprocess.run(["docker", "start", "wg-1"], check=True)
 
-    # Wait for failback to wg-via1 within 30s
-    deadline = time.time() + 30.0
+    # Failback is held down by frr_failback_hold_s (30s) plus container restart time
+    deadline = time.time() + 60.0
     failed_back = False
     while time.time() < deadline:
         out = subprocess.check_output(
@@ -95,14 +95,14 @@ def test_scenario_1_wg1_crash(prober, seq_writer):
             break
         time.sleep(0.1)
 
-    assert failed_back, "Traffic did not fail back to wg-via1 within 30s"
+    assert failed_back, "Traffic did not fail back to wg-via1 within 60s"
 
     prober.stop()
     switch_s, lost_pings, failback_s = prober.compute_metrics(fault_ms, recover_ms)
 
-    # 1.5s switch threshold, 30s failback threshold
+    # 1.5s switch threshold, 60s failback threshold (30s hold-down)
     assert switch_s is not None and switch_s <= 1.5, f"Switch time {switch_s}s exceeded 1.5s threshold"
-    assert failback_s is not None and failback_s <= 30.0, f"Failback time {failback_s}s exceeded 30s threshold"
+    assert failback_s is not None and failback_s <= 60.0, f"Failback time {failback_s}s exceeded 60s threshold"
 
     record_result(
         scenario="1. wg-1 crash",
@@ -146,7 +146,8 @@ def test_scenario_2_wg1_hang(prober, seq_writer):
     recover_ms = int(time.time() * 1000)
     subprocess.run(["docker", "unpause", "wg-1"], check=True)
 
-    deadline = time.time() + 30.0
+    # Failback is held down by frr_failback_hold_s (30s) plus BGP re-establishment
+    deadline = time.time() + 60.0
     failed_back = False
     while time.time() < deadline:
         out = subprocess.check_output(
@@ -159,7 +160,7 @@ def test_scenario_2_wg1_hang(prober, seq_writer):
             break
         time.sleep(0.1)
 
-    assert failed_back, "Traffic did not fail back to wg-via1 after wg-1 unpause"
+    assert failed_back, "Traffic did not fail back to wg-via1 after wg-1 unpause within 60s"
 
     seq_writer.stop()
     seq_ok = seq_writer.verify_no_gaps(timeout=15.0)
@@ -167,8 +168,9 @@ def test_scenario_2_wg1_hang(prober, seq_writer):
     prober.stop()
     switch_s, lost_pings, failback_s = prober.compute_metrics(fault_ms, recover_ms)
 
+    # 1.5s switch threshold, 60s failback threshold (30s hold-down)
     assert switch_s is not None and switch_s <= 1.5, f"Switch time {switch_s}s exceeded 1.5s threshold"
-    assert failback_s is not None and failback_s <= 30.0, f"Failback time {failback_s}s exceeded 30s threshold"
+    assert failback_s is not None and failback_s <= 60.0, f"Failback time {failback_s}s exceeded 60s threshold"
 
     record_result(
         scenario="2. wg-1 hang",
@@ -228,8 +230,8 @@ def test_scenario_3_silent_blackhole(prober, seq_writer):
     recover_ms = int(time.time() * 1000)
     subprocess.run(["docker", "exec", "mysql-1", "nft", "delete", "table", "inet", "chaos"], check=True)
 
-    # Wait for failback to wg-via1
-    deadline = time.time() + 30.0
+    # Failback is held down by frr_failback_hold_s (30s) after removing blackhole rule
+    deadline = time.time() + 60.0
     failed_back = False
     while time.time() < deadline:
         out = subprocess.check_output(
@@ -242,7 +244,7 @@ def test_scenario_3_silent_blackhole(prober, seq_writer):
             break
         time.sleep(0.1)
 
-    assert failed_back, "Traffic did not fail back to wg-via1 after removing blackhole rule"
+    assert failed_back, "Traffic did not fail back to wg-via1 after removing blackhole rule within 60s"
 
     seq_writer.stop()
     seq_ok = seq_writer.verify_no_gaps(timeout=15.0)
@@ -250,8 +252,9 @@ def test_scenario_3_silent_blackhole(prober, seq_writer):
     prober.stop()
     switch_s, lost_pings, failback_s = prober.compute_metrics(fault_ms, recover_ms)
 
+    # 1.5s switch threshold, 60s failback threshold (30s hold-down)
     assert switch_s is not None and switch_s <= 1.5, f"Switch time {switch_s}s exceeded 1.5s threshold"
-    assert failback_s is not None and failback_s <= 30.0, f"Failback time {failback_s}s exceeded 30s threshold"
+    assert failback_s is not None and failback_s <= 60.0, f"Failback time {failback_s}s exceeded 60s threshold"
 
     record_result(
         scenario="3. silent path blackhole",
@@ -489,8 +492,8 @@ def test_scenario_7_routing_daemon_failure(prober, seq_writer):
 
     assert switched, "Traffic did not switch to wg-via2 after bgpd killed"
 
-    # Wait for watchfrr to restart bgpd and traffic to return to wg-via1
-    deadline = time.time() + 30.0
+    # Failback is held down by watchfrr restart time plus frr_failback_hold_s (30s)
+    deadline = time.time() + 60.0
     failed_back = False
     recover_ms = int(time.time() * 1000)
 
@@ -505,7 +508,7 @@ def test_scenario_7_routing_daemon_failure(prober, seq_writer):
             break
         time.sleep(0.1)
 
-    assert failed_back, "Traffic did not return to wg-via1 within 30s after watchfrr restarted bgpd"
+    assert failed_back, "Traffic did not return to wg-via1 within 60s after watchfrr restarted bgpd"
 
     seq_writer.stop()
     seq_ok = seq_writer.verify_no_gaps(timeout=15.0)
@@ -513,8 +516,9 @@ def test_scenario_7_routing_daemon_failure(prober, seq_writer):
     prober.stop()
     switch_s, lost_pings, failback_s = prober.compute_metrics(fault_ms, recover_ms)
 
+    # 1.5s switch threshold, 60s failback threshold (30s hold-down)
     assert switch_s is not None and switch_s <= 1.5, f"Switch time {switch_s}s exceeded 1.5s threshold"
-    assert failback_s is not None and failback_s <= 30.0, f"Failback time {failback_s}s exceeded 30s threshold"
+    assert failback_s is not None and failback_s <= 60.0, f"Failback time {failback_s}s exceeded 60s threshold"
 
     record_result(
         scenario="7. routing daemon failure",

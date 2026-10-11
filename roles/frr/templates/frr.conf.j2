@@ -31,6 +31,12 @@ router bgp {{ bgp_asn }}
  neighbor {{ n.peer_ip }} password {{ bgp_password }}
  neighbor {{ n.peer_ip }} ttl-security hops 1
  neighbor {{ n.peer_ip }} bfd profile wg-tunnels
+{%   if routing_mode == 'active_backup' and frr_failback_hold_s | default(0) > 0 %}
+{%     if (inventory_hostname in groups['mysql'] and n.peer_host == primary_relay) or (inventory_hostname == primary_relay and n.peer_host in groups['mysql']) %}
+ ! Delay OPEN on primary relay session so traffic stays on backup until primary is stable
+ neighbor {{ n.peer_ip }} timers delayopen {{ frr_failback_hold_s }}
+{%     endif %}
+{%   endif %}
 {% endfor %}
  !
  address-family ipv4 unicast
@@ -38,6 +44,8 @@ router bgp {{ bgp_asn }}
 {% if routing_mode == 'ecmp' and inventory_hostname in groups['mysql'] %}
   maximum-paths 2
 {% endif %}
+  ! Damp route flaps to keep unstable routes suppressed across repeated flaps
+  bgp dampening 1 750 2000 4
 {% for n in frr_neighbors %}
   neighbor {{ n.peer_ip }} activate
   neighbor {{ n.peer_ip }} maximum-prefix 10
