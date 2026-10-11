@@ -299,9 +299,9 @@ def steady_state(request):
     yield
 
 
-def wait_for_steady_state(timeout=60):
-    # a previous test may have just reapplied config; give BGP/BFD time to settle,
-    # but a lab that never converges (e.g. wg-1 paused) still fails
+def wait_for_steady_state(timeout=300):
+    # a previous scenario holds wg-1 back on purpose (30 s delayopen, dampening up to
+    # 4 min); a lab that never converges (e.g. wg-1 paused) still fails
     deadline = time.time() + timeout
     while True:
         try:

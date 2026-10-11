@@ -4,7 +4,7 @@
   gather_facts: false
   vars:
     # sidecar projects first: they live in the nodes' namespaces
-    destroy_projects: [logging, monitoring, exporters, mysql]
+    destroy_projects: [autodiagnose, logging, monitoring, exporters, mysql]
     destroy_volumes: false
   tasks:
     - name: Remove the sidecar and stack projects

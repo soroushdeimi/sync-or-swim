@@ -389,10 +389,11 @@ def test_scenario_6_recovery_from_blackhole(seq_writer):
     while time.time() < deadline:
         p_now = int(mysql_query("mysql-1-db", "SELECT count(id) FROM sre.seq;").strip())
         r_now = int(mysql_query("mysql-2-db", "SELECT count(id) FROM sre.seq;").strip())
-        if p_now > 0 and p_now == r_now:
+        # replication beats our two queries, so the replica can already be a row ahead
+        if p_now > 0 and r_now >= p_now:
             break
         time.sleep(0.5)
-    assert p_now > 0 and p_now == r_now, "Replica did not sync before inducing the partition"
+    assert p_now > 0 and r_now >= p_now, "Replica did not sync before inducing the partition"
 
     # Induce both paths down
     subprocess.run(["docker", "exec", "mysql-1", "nft", "add", "table", "inet", "chaos"], check=True)
