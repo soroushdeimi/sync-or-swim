@@ -27,3 +27,21 @@
     dest: "{{ frr_init_dir }}/20-frr.sh"
     mode: "0755"
   notify: Apply FRR configuration
+
+- name: Apply pending FRR changes now
+  ansible.builtin.meta: flush_handlers
+
+# delayopen holds the session to the primary relay back on purpose, so a
+# finished deploy waits until every session is up instead of racing it
+- name: Wait for all BGP sessions to be established
+  # vtysh errors while bgpd restarts; treat that as "no sessions yet"
+  ansible.builtin.shell:
+    cmd: vtysh -c 'show ip bgp summary json' 2>/dev/null || echo '{}'
+  register: frr_bgp_summary
+  changed_when: false
+  until: >-
+    (frr_bgp_summary.stdout | from_json).get('ipv4Unicast', {}).get('peers', {}) | dict2items | length > 0 and
+    (frr_bgp_summary.stdout | from_json).ipv4Unicast.peers | dict2items
+    | rejectattr('value.state', 'equalto', 'Established') | list | length == 0
+  retries: 40
+  delay: 3
