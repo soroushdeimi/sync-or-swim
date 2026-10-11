@@ -105,6 +105,7 @@ make deps        # Create virtualenv and install Ansible collections
 make up          # Build image and launch entire lab (idempotent, second run changed=0)
 make test        # Run integration test suite (144 tests)
 make chaos       # Run automated failure and chaos test suite
+make diagnose    # Check the stack layer by layer and name the likely root cause
 make lint        # Run yamllint, ansible-lint (production profile), and shellcheck
 make clean       # Remove lab, volumes, and build artifacts cleanly
 make down        # Destroy lab containers and networks cleanly

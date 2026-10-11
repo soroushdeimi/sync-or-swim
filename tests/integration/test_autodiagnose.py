@@ -1,5 +1,6 @@
 """Integration tests for automated diagnostics tool and alert webhook service."""
 
+import sys
 import json
 from pathlib import Path
 import subprocess
@@ -66,7 +67,7 @@ def test_diagnose_healthy():
     """diagnose.py exits 0 on the healthy lab."""
     script_path = REPO_ROOT / "scripts" / "diagnose.py"
     proc = subprocess.run(
-        ["python3", str(script_path), "--node", "mysql-1", "--json"],
+        [sys.executable, str(script_path), "--node", "mysql-1", "--json"],
         capture_output=True,
         text=True,
     )
@@ -111,7 +112,7 @@ def test_diagnose_degraded_dropped_udp():
         time.sleep(1.5)
 
         proc = subprocess.run(
-            ["python3", str(script_path), "--node", "mysql-1", "--json"],
+            [sys.executable, str(script_path), "--node", "mysql-1", "--json"],
             capture_output=True,
             text=True,
         )
@@ -131,7 +132,7 @@ def test_diagnose_degraded_dropped_udp():
         deadline = time.time() + 15.0
         while time.time() < deadline:
             p = subprocess.run(
-                ["python3", str(script_path), "--node", "mysql-1", "--json"],
+                [sys.executable, str(script_path), "--node", "mysql-1", "--json"],
                 capture_output=True,
                 text=True,
             )

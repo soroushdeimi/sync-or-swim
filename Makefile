@@ -1,7 +1,7 @@
 VENV ?= .venv
 BIN  := $(VENV)/bin
 
-.PHONY: help venv deps up deploy down test lint ps shell image image-save image-load idempotency chaos clean
+.PHONY: help venv deps up deploy down test lint ps shell image image-save image-load idempotency chaos clean diagnose
 
 help: ## Show targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-8s %s\n", $$1, $$2}'
@@ -47,6 +47,9 @@ lint: ## yamllint + ansible-lint + shellcheck
 idempotency: venv ## Re-run site.yml and fail if anything changed
 	$(BIN)/ansible-playbook playbooks/site.yml | tee build/idempotency.log
 	scripts/check-idempotent.py build/idempotency.log
+
+diagnose: venv ## Check the stack layer by layer and name the likely root cause
+	$(BIN)/python scripts/diagnose.py
 
 ps: ## Show lab containers
 	docker compose -p sync-or-swim ps
