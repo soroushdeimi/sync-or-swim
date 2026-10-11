@@ -42,3 +42,9 @@ Real problems hit while building the lab. Each one is a candidate for a postmort
 - **Observation:** pausing wg-1 moved traffic to wg-2 in 0.95 s with no lost pings.
 - **Why:** pause freezes processes, but WireGuard and forwarding live in the kernel, so wg-1 kept forwarding. Only bgpd/bfdd froze, and BFD noticed.
 - **So:** `pause` simulates a control-plane hang. A real crash is `docker kill` (0.21 s to switch in a first run) or a blackholed path. The chaos suite covers both separately.
+
+## 2026-10-10: route-flap prevention and delayed failback
+
+- **Problem:** on degraded paths (scenario 4, 30% packet loss on wg-1), active path bounced 15 times in 60 s with 265 lost pings due to instant BFD recovery and failback.
+- **Fix:** configure `neighbor timers delayopen 30` toward the primary relay (hold down recovered sessions for 30 s) and address-family `bgp dampening 1 750 2000 4` to suppress flapping prefixes.
+- **Result:** degraded path changes dropped from 15 to 1; ping loss dropped from 265 to 7. Failover remains fast (< 1.5 s), while failback is held stable for ~31-41 s across failure scenarios.

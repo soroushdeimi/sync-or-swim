@@ -1,3 +1,4 @@
 ---
 frr_config_dir: /etc/sos/frr
 frr_init_dir: /etc/sos/init.d
+frr_failback_hold_s: 30
