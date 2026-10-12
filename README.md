@@ -6,6 +6,18 @@ The platform interconnects two simulated geographic database sites (`mysql-1` an
 
 ---
 
+## Demo
+
+`docker kill wg-1` on the running lab, recorded from the Grafana dashboard. The path moves to wg-2 within a second, replication keeps running, and wg-1 is held back for 30 s after it returns so a shaky relay cannot flap.
+
+![Failover recorded from Grafana](docs/images/failover.gif)
+
+The dashboard over six minutes, with two failover and failback cycles. Green is the path that carries traffic.
+
+![Grafana dashboard](docs/images/grafana-dashboard.png)
+
+---
+
 ## Requirements and Bonus Checklist
 
 | Requirement / Item | Description | Status | Implementation Links |
@@ -27,7 +39,7 @@ The platform interconnects two simulated geographic database sites (`mysql-1` an
 | **Bonus 5: Automated Failback** | BGP returns traffic to wg-1 automatically once it has been stable for 30 s (measured 32-41 s after recovery) | Done | [roles/frr/templates/frr.conf.j2](roles/frr/templates/frr.conf.j2), [docs/results.md](docs/results.md) |
 | **Bonus 6: Automated Failure Tests** | Nine failure scenarios with measured switch and recovery times, and seven tests that fire every alert with a real fault and require it to clear | Done | [tests/chaos/test_scenarios.py](tests/chaos/test_scenarios.py), [docs/results.md](docs/results.md) |
 | **Bonus 7: Automated Troubleshooting** | `scripts/diagnose.py` checks six layers bottom-up and names the likely root cause; critical alerts run it automatically and log the verdict to Loki | Done | [scripts/diagnose.py](scripts/diagnose.py), [roles/autodiagnose/](roles/autodiagnose/) |
-| **Bonus 8: Integration Tests** | 193 pytest/testinfra integration tests; every test starts from a converged lab, the firewall is attacked from a stranger container, and the replication alerts are tested end to end | Done | [tests/integration/](tests/integration/) |
+| **Bonus 8: Integration Tests** | 194 pytest/testinfra integration tests; every test starts from a converged lab, the firewall is attacked from a stranger container, and the replication alerts are tested end to end | Done | [tests/integration/](tests/integration/) |
 | **Bonus 9: Root Cause Postmortems** | Five postmortems of real incidents, plus the problem log in docs/notes.md | Done | [docs/postmortems/](docs/postmortems/) |
 
 ---
@@ -103,7 +115,7 @@ flowchart TB
 ```bash
 make deps        # Create virtualenv and install Ansible collections
 make up          # Build image and launch entire lab (idempotent, second run changed=0)
-make test        # Run integration test suite (193 tests)
+make test        # Run integration test suite (194 tests)
 make chaos       # Run automated failure and chaos test suite
 make diagnose    # Check the stack layer by layer and name the likely root cause
 make lint        # Run yamllint, ansible-lint (production profile), and shellcheck
@@ -122,7 +134,7 @@ make down        # Destroy lab containers and networks cleanly
 ## Measured Results
 
 - From `make clean` to a fully deployed lab: `make up` about 1 minute; a second run changes nothing on any host.
-- 193 integration tests pass (`make test`), on this machine and in CI.
+- 194 integration tests pass (`make test`), on this machine and in CI.
 - A full host reboot recovered everything without intervention: BGP Established, traffic via wg-1 with the loopback as source, replication running, every Prometheus target up.
 
 Automated failure scenarios from `make chaos` (generated into [docs/results.md](docs/results.md)):
