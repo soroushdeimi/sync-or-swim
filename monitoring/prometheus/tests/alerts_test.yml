@@ -165,3 +165,53 @@ tests:
       - eval_time: 6m
         alertname: RouteFlapping
         exp_alerts: []
+
+  # BGP: Established (1) is healthy. Down (0) and administratively down (2) both alert.
+  - interval: 1m
+    input_series:
+      - series: 'frr_bgp_peer_state{instance="mysql-1", peer="10.10.11.1"}'
+        values: '1+0x5'
+      - series: 'frr_bgp_peer_state{instance="mysql-1", peer="10.10.21.1"}'
+        values: '0+0x5'
+      - series: 'frr_bgp_peer_state{instance="mysql-2", peer="10.10.12.1"}'
+        values: '2+0x5'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: BGPSessionDown
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: mysql-1
+              peer: 10.10.21.1
+            exp_annotations:
+              summary: "BGP session down on mysql-1"
+              description: "BGP session with peer 10.10.21.1 on mysql-1 is not established (state=0)."
+              runbook_url: "https://github.com/soroushdeimi/sync-or-swim/blob/main/docs/runbooks/BGPSessionDown.md"
+          - exp_labels:
+              severity: warning
+              instance: mysql-2
+              peer: 10.10.12.1
+            exp_annotations:
+              summary: "BGP session down on mysql-2"
+              description: "BGP session with peer 10.10.12.1 on mysql-2 is not established (state=2)."
+              runbook_url: "https://github.com/soroushdeimi/sync-or-swim/blob/main/docs/runbooks/BGPSessionDown.md"
+
+  # BFD: Up (1) is healthy, Down (0) alerts.
+  - interval: 1m
+    input_series:
+      - series: 'frr_bfd_peer_state{instance="mysql-1", peer="10.10.11.1"}'
+        values: '1+0x5'
+      - series: 'frr_bfd_peer_state{instance="mysql-1", peer="10.10.21.1"}'
+        values: '0+0x5'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: BFDPeerDown
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: mysql-1
+              peer: 10.10.21.1
+            exp_annotations:
+              summary: "BFD peer down on mysql-1"
+              description: "BFD peer 10.10.21.1 on mysql-1 is down (state=0)."
+              runbook_url: "https://github.com/soroushdeimi/sync-or-swim/blob/main/docs/runbooks/BFDPeerDown.md"

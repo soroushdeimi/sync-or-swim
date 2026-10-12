@@ -225,3 +225,18 @@ def test_replication_alert_fires_and_clears(thread, alert):
     while alert in firing_alerts():
         assert time.time() < deadline, f"{alert} kept firing 120 s after the {thread} was started again"
         time.sleep(3)
+
+
+def active_alerts():
+    # pending counts too: a rule that is wrong for healthy data spends its first `for:` pending
+    _, body = http_get(f"http://{MGMT_SERVICES['prometheus']}:9090/api/v1/alerts")
+    return sorted({a["labels"]["alertname"] for a in json.loads(body)["data"]["alerts"]})
+
+
+def test_healthy_lab_has_no_active_alerts():
+    # alerts left over from earlier tests clear within a minute or two; a rule that is
+    # wrong for healthy data (e.g. a state value off by one) never clears
+    deadline = time.time() + 240
+    while active_alerts():
+        assert time.time() < deadline, f"alerts still active on a healthy lab: {active_alerts()}"
+        time.sleep(5)

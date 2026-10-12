@@ -605,3 +605,182 @@ def test_scenario_8_mysql_down_not_network():
         seq_ok=True,
         notes="BGP stayed up, path stayed wg-1, MySQL alerts fired, AllPathsDown did not fire",
     )
+
+
+def route_dev(node="mysql-1", dst="10.255.0.2"):
+    out = subprocess.check_output(["docker", "exec", node, "ip", "-j", "route", "get", dst], text=True)
+    return json.loads(out)[0].get("dev")
+
+
+def stale_handshake_alerts():
+    return [
+        a for a in get_prometheus_alerts()
+        if a["labels"].get("alertname") == "WireGuardHandshakeStale" and a["state"] == "firing"
+    ]
+
+
+@pytest.mark.chaos
+def test_scenario_9_backup_path_handshake_stale():
+    """Scenario 9: the backup path goes silent. Its handshake ages past 180 s and WireGuardHandshakeStale fires,
+    while traffic stays on wg-1 and replication keeps running. Dropping the packets again clears it."""
+    assert not stale_handshake_alerts(), "WireGuardHandshakeStale was already firing before the fault"
+    # mysql-1 sends to wg-2's port 51821 and listens on 51822, both over ul-b
+    ruleset = """
+    table inet chaos {
+      chain out { type filter hook output priority 0; policy accept; oifname "ul-b" udp dport 51821 drop; }
+      chain in  { type filter hook input  priority 0; policy accept; iifname "ul-b" udp dport 51822 drop; }
+    }
+    """
+    start = time.time()
+    subprocess.run(["docker", "exec", "-i", "mysql-1", "nft", "-f", "-"], input=ruleset, text=True, check=True)
+    try:
+        # 180 s of age, then the rule's own `for: 1m`, plus scrape and evaluation delay
+        deadline = start + 420
+        while not stale_handshake_alerts():
+            assert time.time() < deadline, "WireGuardHandshakeStale did not fire within 420 s of silencing the backup path"
+            time.sleep(5)
+        fired_s = time.time() - start
+
+        assert route_dev() == "wg-via1", "the primary path should be unaffected by a dead backup tunnel"
+        status = mysql_replica_status("mysql-2-db")
+        assert status.get("Replica_IO_Running") == "Yes" and status.get("Replica_SQL_Running") == "Yes", \
+            "replication should not notice a dead backup path"
+    finally:
+        subprocess.run(["docker", "exec", "mysql-1", "nft", "delete", "table", "inet", "chaos"], capture_output=True)
+
+    recover = time.time()
+    deadline = recover + 300
+    while stale_handshake_alerts():
+        assert time.time() < deadline, "WireGuardHandshakeStale kept firing 300 s after the backup path came back"
+        time.sleep(5)
+    cleared_s = time.time() - recover
+
+    record_result(
+        scenario="9. backup path silent (stale handshake)",
+        switch_s=None,
+        lost_pings=0,
+        failback_s=None,
+        seq_ok=True,
+        notes=f"WireGuardHandshakeStale fired after {fired_s:.0f}s and cleared {cleared_s:.0f}s after recovery; traffic stayed on wg-1, replication kept running",
+    )
+
+
+def firing_names():
+    return {a["labels"]["alertname"] for a in get_prometheus_alerts() if a["state"] == "firing"}
+
+
+def wait_alerts(names, timeout):
+    """Seconds until every alert in names is firing; fails with the missing ones."""
+    start = time.time()
+    while True:
+        missing = set(names) - firing_names()
+        if not missing:
+            return time.time() - start
+        assert time.time() < start + timeout, f"{sorted(missing)} did not fire within {timeout} s"
+        time.sleep(3)
+
+
+def wait_alerts_clear(names, timeout):
+    start = time.time()
+    while True:
+        stuck = set(names) & firing_names()
+        if not stuck:
+            return time.time() - start
+        assert time.time() < start + timeout, f"{sorted(stuck)} still firing {timeout} s after recovery"
+        time.sleep(3)
+
+
+def alert_sweep(scenario, names, fire_timeout, clear_timeout, inject, restore):
+    """Inject a real fault, require the alerts to fire, restore, require them to clear."""
+    wait_alerts_clear(names, 180)
+    inject()
+    try:
+        fired_s = wait_alerts(names, fire_timeout)
+    finally:
+        restore()
+    cleared_s = wait_alerts_clear(names, clear_timeout)
+    record_result(
+        scenario=scenario,
+        switch_s=None,
+        lost_pings=None,
+        failback_s=None,
+        seq_ok=True,
+        notes=f"{', '.join(sorted(names))} fired after {fired_s:.0f}s and cleared {cleared_s:.0f}s after recovery",
+    )
+
+
+def sh(node, *cmd, check=True):
+    return subprocess.run(["docker", "exec", node, *cmd], capture_output=True, text=True, check=check)
+
+
+@pytest.mark.chaos
+def test_alert_relay_crash():
+    alert_sweep(
+        "10a. alerts: relay crash",
+        {"BFDPeerDown", "BGPSessionDown", "TrafficOnBackupPath"},
+        fire_timeout=150, clear_timeout=240,
+        inject=lambda: subprocess.run(["docker", "kill", "wg-1"], check=True, capture_output=True),
+        restore=lambda: subprocess.run(["docker", "start", "wg-1"], check=True, capture_output=True),
+    )
+
+
+@pytest.mark.chaos
+def test_alert_exporter_down():
+    container = "sync-or-swim-exporters-wg-2-node-1"
+    alert_sweep(
+        "10b. alerts: exporter stopped",
+        {"ExporterDown"},
+        fire_timeout=150, clear_timeout=150,
+        inject=lambda: subprocess.run(["docker", "stop", container], check=True, capture_output=True),
+        restore=lambda: subprocess.run(["docker", "start", container], check=True, capture_output=True),
+    )
+
+
+@pytest.mark.chaos
+def test_alert_replication_lag():
+    def stop():
+        mysql_query("mysql-2-db", "STOP REPLICA SQL_THREAD")
+
+    def start():
+        mysql_query("mysql-2-db", "START REPLICA SQL_THREAD")
+
+    alert_sweep(
+        "10c. alerts: replication lag",
+        {"ReplicationLagHigh", "ReplicationSQLStopped"},
+        fire_timeout=240, clear_timeout=240,
+        inject=stop, restore=start,
+    )
+
+
+@pytest.mark.chaos
+def test_alert_mysql_unreachable():
+    alert_sweep(
+        "10d. alerts: primary mysqld stopped",
+        {"MySQLUnreachable"},
+        fire_timeout=150, clear_timeout=240,
+        inject=lambda: subprocess.run(["docker", "stop", "mysql-1-db"], check=True, capture_output=True),
+        restore=lambda: subprocess.run(["docker", "start", "mysql-1-db"], check=True, capture_output=True),
+    )
+
+
+@pytest.mark.chaos
+def test_alert_packet_loss():
+    alert_sweep(
+        "10e. alerts: lossy path",
+        {"PathHighPacketLoss"},
+        fire_timeout=300, clear_timeout=360,
+        inject=lambda: sh("mysql-1", "tc", "qdisc", "add", "dev", "ul-a", "root", "netem", "loss", "30%"),
+        restore=lambda: sh("mysql-1", "tc", "qdisc", "del", "dev", "ul-a", "root", check=False),
+    )
+
+
+@pytest.mark.chaos
+def test_alert_latency():
+    # 100 ms is far above the 1 ms baseline but well below the BFD detection time of 900 ms
+    alert_sweep(
+        "10f. alerts: slow path",
+        {"PathHighLatency"},
+        fire_timeout=240, clear_timeout=240,
+        inject=lambda: sh("mysql-1", "tc", "qdisc", "add", "dev", "ul-a", "root", "netem", "delay", "100ms"),
+        restore=lambda: sh("mysql-1", "tc", "qdisc", "del", "dev", "ul-a", "root", check=False),
+    )

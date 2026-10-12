@@ -102,19 +102,34 @@
           },
           "mappings": [
             {
+              "type": "value",
               "options": {
-                "0": { "text": "Idle", "color": "red" },
-                "1": { "text": "Connect/Active/Open", "color": "yellow" },
-                "2": { "text": "Established", "color": "green" }
-              },
-              "type": "value"
+                "0": {
+                  "text": "Down",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "Established",
+                  "color": "green"
+                },
+                "2": {
+                  "text": "Admin down",
+                  "color": "yellow"
+                }
+              }
             }
           ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "red", "value": null },
-              { "color": "green", "value": 2 }
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 2
+              }
             ]
           }
         },
@@ -133,7 +148,9 @@
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": false
         },
@@ -150,7 +167,7 @@
           "refId": "A"
         }
       ],
-      "title": "BGP Peer State (2 = Established)",
+      "title": "BGP Peer State (1 = Established)",
       "type": "stat"
     },
     {
@@ -166,8 +183,14 @@
           "mappings": [
             {
               "options": {
-                "0": { "text": "Down", "color": "red" },
-                "1": { "text": "Up", "color": "green" }
+                "0": {
+                  "text": "Down",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "Up",
+                  "color": "green"
+                }
               },
               "type": "value"
             }
@@ -175,8 +198,14 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "red", "value": null },
-              { "color": "green", "value": 1 }
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
             ]
           }
         },
@@ -195,7 +224,9 @@
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": false
         },
@@ -498,8 +529,14 @@
           "mappings": [
             {
               "options": {
-                "0": { "text": "Stopped", "color": "red" },
-                "1": { "text": "Running", "color": "green" }
+                "0": {
+                  "text": "Stopped",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "Running",
+                  "color": "green"
+                }
               },
               "type": "value"
             }
@@ -507,8 +544,14 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "red", "value": null },
-              { "color": "green", "value": 1 }
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
             ]
           }
         },
@@ -527,7 +570,9 @@
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": false
         },
@@ -560,8 +605,14 @@
           "mappings": [
             {
               "options": {
-                "0": { "text": "Stopped", "color": "red" },
-                "1": { "text": "Running", "color": "green" }
+                "0": {
+                  "text": "Stopped",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "Running",
+                  "color": "green"
+                }
               },
               "type": "value"
             }
@@ -569,8 +620,14 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "red", "value": null },
-              { "color": "green", "value": 1 }
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
             ]
           }
         },
@@ -589,7 +646,9 @@
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": false
         },
@@ -631,9 +690,18 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 30 },
-              { "color": "red", "value": 300 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 30
+              },
+              {
+                "color": "red",
+                "value": 300
+              }
             ]
           },
           "unit": "s"
@@ -675,7 +743,11 @@
   ],
   "refresh": "5s",
   "schemaVersion": 39,
-  "tags": ["sre", "replication", "sync-or-swim"],
+  "tags": [
+    "sre",
+    "replication",
+    "sync-or-swim"
+  ],
   "templating": {
     "list": []
   },

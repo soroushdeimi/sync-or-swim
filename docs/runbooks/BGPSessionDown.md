@@ -1,7 +1,7 @@
 # Runbook: BGPSessionDown
 
 ## Meaning
-The BGP session with a neighboring peer is not in the `Established` state (`state != 2` from `frr_exporter` metric `frr_bgp_peer_state`). The peer connection is either in `Idle`, `Connect`, `Active`, or `OpenSent`/`OpenConfirm`.
+The BGP session with a neighboring peer is not in the `Established` state (`frr_bgp_peer_state != 1`; the exporter reports 1 = Established, 0 = Down, 2 = Administratively Down). The peer connection is either in `Idle`, `Connect`, `Active`, or `OpenSent`/`OpenConfirm`.
 
 ## Impact
 - **Single peer down (wg-1 or wg-2):** Redundancy is degraded. In `active_backup` mode, if `wg-1` fails, traffic fails over to `wg-2`. If `wg-2` is down, failover capability is lost.

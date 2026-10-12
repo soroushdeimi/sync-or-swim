@@ -3,7 +3,7 @@ groups:
   - name: routing-and-links
     rules:
       - alert: BGPSessionDown
-        expr: frr_bgp_peer_state != 2
+        expr: frr_bgp_peer_state != 1
         for: 30s
         labels:
           severity: warning
