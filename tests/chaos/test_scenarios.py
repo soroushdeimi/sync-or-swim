@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import subprocess
 import time
+import urllib.parse
 import urllib.request
 import pytest
 import yaml
@@ -786,32 +787,60 @@ def test_alert_latency():
     )
 
 
+def wait_path_changes_below(limit, timeout):
+    """Wait until no active-path series changed value in the last ten minutes."""
+    url = f"http://{MGMT_SERVICES['prometheus']}:9090/api/v1/query?query=" + urllib.parse.quote("max(changes(sre_active_path[10m]))")
+    deadline = time.time() + timeout
+    while True:
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            result = json.loads(resp.read().decode())["data"]["result"]
+        if not result or float(result[0]["value"][1]) < limit:
+            return
+        assert time.time() < deadline, f"the active path kept changing for {timeout} s"
+        time.sleep(10)
+
+
 @pytest.mark.chaos
 def test_alert_route_flapping():
     """Repeated failovers push sre_active_path past four changes in ten minutes and RouteFlapping fires.
-    It is the last alert test on purpose: the ten-minute window must be clean first, or it would fire vacuously."""
-    wait_alerts_clear({"RouteFlapping"}, 720)
+    The ten-minute window must be empty first, otherwise one more change would be enough and the test proves nothing.
+    The window slides, so the alert can fire and clear again within seconds: it counts as fired the moment it is seen."""
+    wait_path_changes_below(1, 720)
+    wait_alerts_clear({"RouteFlapping"}, 60)
     start = time.time()
-    for cycle in range(4):
+    seen_at = None
+
+    def check():
+        nonlocal seen_at
+        if seen_at is None and "RouteFlapping" in firing_names():
+            seen_at = time.time() - start
+
+    for cycle in range(5):
         subprocess.run(["docker", "kill", "wg-1"], check=True, capture_output=True)
         deadline = time.time() + 10
         while route_dev() != "wg-via2":
             assert time.time() < deadline, "no failover to wg-via2 after killing wg-1"
+            check()
             time.sleep(0.2)
         subprocess.run(["docker", "start", "wg-1"], check=True, capture_output=True)
         deadline = time.time() + 300
         while route_dev() != "wg-via1":
             assert time.time() < deadline, "traffic did not return to wg-via1 within 300 s"
+            check()
             time.sleep(1)
-        if "RouteFlapping" in firing_names():
+        # stay on wg-1 for a few scrapes: the metric is sampled every 5 s and would never see a
+        # flap that lasts one second, which is also why RouteFlapping ignores such flaps
+        for _ in range(15):
+            check()
+            time.sleep(1)
+        if seen_at is not None:
             break
-    fired_s = time.time() - start if "RouteFlapping" in firing_names() else wait_alerts({"RouteFlapping"}, 60) + (time.time() - start)
+    assert seen_at is not None, "RouteFlapping never fired during five failover/failback cycles"
     record_result(
         scenario="10g. alerts: repeated failovers",
         switch_s=None,
         lost_pings=None,
         failback_s=None,
         seq_ok=True,
-        notes=f"RouteFlapping fired after {cycle + 1} failover/failback cycles ({fired_s:.0f}s); it stays active until the ten-minute window empties",
+        notes=f"RouteFlapping fired after {seen_at:.0f}s ({cycle + 1} failover/failback cycles); the ten-minute window then empties and it clears by itself",
     )
-

@@ -25,9 +25,9 @@ The platform interconnects two simulated geographic database sites (`mysql-1` an
 | **Bonus 3: ECMP Load Balancing** | Multipath relax, dual active next-hops toggle | Done | [roles/frr/templates/frr.conf.j2](roles/frr/templates/frr.conf.j2) (`routing_mode: ecmp`) |
 | **Bonus 4: Routing Security** | TCP MD5 auth, GTSM (TTL 1), prefix lists, non-transit filtering, and a default-drop nftables firewall per node (WireGuard only from its peer, BGP/BFD only inside the tunnels, MySQL only from the peer loopback); tests attack from a stranger container | Done | [roles/frr/templates/frr.conf.j2](roles/frr/templates/frr.conf.j2), [roles/firewall/](roles/firewall/), [tests/integration/test_firewall.py](tests/integration/test_firewall.py) |
 | **Bonus 5: Automated Failback** | BGP returns traffic to wg-1 automatically once it has been stable for 30 s (measured 32-41 s after recovery) | Done | [roles/frr/templates/frr.conf.j2](roles/frr/templates/frr.conf.j2), [docs/results.md](docs/results.md) |
-| **Bonus 6: Automated Failure Tests** | Automated chaos test suite running failure scenarios | Done | [tests/chaos/test_scenarios.py](tests/chaos/test_scenarios.py), [docs/results.md](docs/results.md) |
+| **Bonus 6: Automated Failure Tests** | Nine failure scenarios with measured switch and recovery times, and seven tests that fire every alert with a real fault and require it to clear | Done | [tests/chaos/test_scenarios.py](tests/chaos/test_scenarios.py), [docs/results.md](docs/results.md) |
 | **Bonus 7: Automated Troubleshooting** | `scripts/diagnose.py` checks six layers bottom-up and names the likely root cause; critical alerts run it automatically and log the verdict to Loki | Done | [scripts/diagnose.py](scripts/diagnose.py), [roles/autodiagnose/](roles/autodiagnose/) |
-| **Bonus 8: Integration Tests** | 160 pytest/testinfra integration tests; every test starts from a converged lab, and the replication alerts are tested end to end | Done | [tests/integration/](tests/integration/) |
+| **Bonus 8: Integration Tests** | 193 pytest/testinfra integration tests; every test starts from a converged lab, the firewall is attacked from a stranger container, and the replication alerts are tested end to end | Done | [tests/integration/](tests/integration/) |
 | **Bonus 9: Root Cause Postmortems** | Five postmortems of real incidents, plus the problem log in docs/notes.md | Done | [docs/postmortems/](docs/postmortems/) |
 
 ---
@@ -103,7 +103,7 @@ flowchart TB
 ```bash
 make deps        # Create virtualenv and install Ansible collections
 make up          # Build image and launch entire lab (idempotent, second run changed=0)
-make test        # Run integration test suite (160 tests)
+make test        # Run integration test suite (193 tests)
 make chaos       # Run automated failure and chaos test suite
 make diagnose    # Check the stack layer by layer and name the likely root cause
 make lint        # Run yamllint, ansible-lint (production profile), and shellcheck
@@ -122,21 +122,31 @@ make down        # Destroy lab containers and networks cleanly
 ## Measured Results
 
 - From `make clean` to a fully deployed lab: `make up` about 1 minute; a second run changes nothing on any host.
-- 160 integration tests pass (`make test`), on this machine and in CI.
+- 193 integration tests pass (`make test`), on this machine and in CI.
 - A full host reboot recovered everything without intervention: BGP Established, traffic via wg-1 with the loopback as source, replication running, every Prometheus target up.
 
 Automated failure scenarios from `make chaos` (generated into [docs/results.md](docs/results.md)):
 
 | Scenario | Switch (s) | Lost Pings | Failback (s) | Seq OK | Notes |
 |:---|:---:|:---:|:---:|:---:|:---|
-| 1. wg-1 crash | 0.099 | 0 | 36.602 | PASS | Switched in 0.099s, failed back in 36.602s, zero reconnects, no seq gaps |
-| 2. wg-1 hang | 0.904 | 0 | 33.293 | PASS | BFD failover in 0.904s, unpause failback in 33.293s, no seq gaps |
-| 3. silent path blackhole | 1.144 | 8 | 31.926 | PASS | wg-via1 stayed UP, BFD switch in 1.144s, failback in 31.926s, no seq gaps |
-| 4. degraded path | 7.524 | 51 | - | PASS | 1 path changes during 60s of 30% netem loss, replication intact with no gaps |
+| 1. wg-1 crash | 0.096 | 0 | 36.637 | PASS | Switched in 0.096s, failed back in 36.637s, zero reconnects, no seq gaps |
+| 2. wg-1 hang | 0.796 | 0 | 32.928 | PASS | BFD failover in 0.796s, unpause failback in 32.928s, no seq gaps |
+| 3. silent path blackhole | 1.027 | 7 | 31.920 | PASS | wg-via1 stayed UP, BFD switch in 1.027s, failback in 31.92s, no seq gaps |
+| 4. degraded path | 3.639 | 27 | - | PASS | 1 path changes during 60s of 30% netem loss, replication intact with no gaps |
 | 5. end-to-end failure | - | - | - | PASS | AllPathsDown fired within 90s, Replica IO left Yes, primary accepted all writes |
-| 6. recovery from 5 | - | - | 5.017 | PASS | Replication caught up in 5.017s via GTID, all seq IDs verified without gaps |
-| 7. routing daemon failure | 0.179 | 1 | 41.271 | PASS | Tunnel stayed up, switch in 0.179s, watchfrr restored bgpd in 41.271s, no gaps |
+| 6. recovery from 5 | - | - | 1.637 | PASS | Replication caught up in 1.637s via GTID, all seq IDs verified without gaps |
+| 7. routing daemon failure | 0.197 | 1 | 41.316 | PASS | Tunnel stayed up, switch in 0.197s, watchfrr restored bgpd in 41.316s, no gaps |
 | 8. MySQL down, not the network | - | 0 | - | PASS | BGP stayed up, path stayed wg-1, MySQL alerts fired, AllPathsDown did not fire |
+| 9. backup path silent (stale handshake) | - | 0 | - | PASS | WireGuardHandshakeStale fired after 215s and cleared 15s after recovery; traffic stayed on wg-1, replication kept running |
+| 10a. alerts: relay crash | - | - | - | PASS | BFDPeerDown, BGPSessionDown, TrafficOnBackupPath fired after 63s and cleared 45s after recovery |
+| 10b. alerts: exporter stopped | - | - | - | PASS | ExporterDown fired after 69s and cleared 9s after recovery |
+| 10c. alerts: replication lag | - | - | - | PASS | ReplicationLagHigh, ReplicationSQLStopped fired after 99s and cleared 9s after recovery |
+| 10d. alerts: primary mysqld stopped | - | - | - | PASS | MySQLUnreachable fired after 24s and cleared 3s after recovery |
+| 10e. alerts: lossy path | - | - | - | PASS | PathHighPacketLoss fired after 30s and cleared 105s after recovery |
+| 10f. alerts: slow path | - | - | - | PASS | PathHighLatency fired after 63s and cleared 9s after recovery |
+| 10g. alerts: repeated failovers | - | - | - | PASS | RouteFlapping fired after 110s (3 failover/failback cycles); the ten-minute window then empties and it clears by itself |
+
+Scenarios 10a-10g fire each alert with a real fault. They show that alerts fire in 24 s (`MySQLUnreachable`) to 215 s (`WireGuardHandshakeStale`, which needs a 180 s stale handshake). `RouteFlapping` needs about three failovers inside ten minutes, and it cannot see a flap shorter than the 5 s scrape interval.
 
 Failover is sub-second to about 1 s. Failback takes 30-40 s on purpose: wg-1 must stay stable for 30 s before traffic returns to it, which is what keeps a lossy path from flapping (scenario 4: one path change instead of 15).
 

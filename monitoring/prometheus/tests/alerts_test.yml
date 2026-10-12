@@ -280,4 +280,3 @@ tests:
               summary: "High latency detected on path wg-1"
               description: "Probe duration on path wg-1 is above 20 ms and more than twice its 1-hour average."
               runbook_url: "https://github.com/soroushdeimi/sync-or-swim/blob/main/docs/runbooks/PathHighLatency.md"
-

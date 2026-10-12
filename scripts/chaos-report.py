@@ -2,6 +2,7 @@
 """Generates docs/results.md from build/chaos-results.jsonl."""
 
 import json
+import re
 from pathlib import Path
 import subprocess
 from datetime import datetime, timezone
@@ -40,7 +41,12 @@ def main():
                 seen[scenario] = entry
 
     # Sort scenarios predictably by scenario key
-    results = sorted(seen.values(), key=lambda x: str(x.get("scenario", "")))
+    def order(entry):
+        # "2. name" before "10a. name": number first, then the letter suffix
+        m = re.match(r"(\d+)([a-z]*)\.", str(entry.get("scenario", "")))
+        return (int(m.group(1)), m.group(2)) if m else (10**6, str(entry.get("scenario", "")))
+
+    results = sorted(seen.values(), key=order)
     commit = get_git_commit()
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
