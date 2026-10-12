@@ -1,0 +1,6 @@
+---
+- name: Per-node firewall
+  hosts: nodes
+  gather_facts: false
+  roles:
+    - firewall

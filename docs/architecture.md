@@ -71,6 +71,10 @@ Routing uses eBGP with Bidirectional Forwarding Detection (BFD):
   - Prefix lists: MySQL nodes advertise only their own `/32` loopback and accept only `10.255.0.0/24 ge 32`. Relays only accept and announce loopback prefixes, preventing non-transit leaks.
   - Maximum prefix limits (`neighbor <ip> maximum-prefix 10`).
 
+### 4b. Per-node firewall
+
+Each node loads an nftables table (`inet sos_fw`) with default drop on input and forward, built from the inventory by the `firewall` role. WireGuard is open only to the tunnel's own peer, BGP and BFD only inside the tunnels, MySQL only to the other node's loopback, and the exporters only to Prometheus and the Docker host. Relays forward between their tunnels, MySQL nodes forward nothing. The first init script loads it on every start. `docker exec wg-1 nft list chain inet sos_fw input` shows the rules and the dropped-packet counter. See [ADR 0007](adr/0007-per-node-nftables-firewall.md).
+
 ### 5. Source Address Rewrite
 When dynamic failover occurs, the outgoing physical/tunnel interface changes. Standard Linux kernel behavior chooses the primary IP of the egress interface as the source address, which would reset established TCP streams.
 To prevent this, FRR installs routes into the Linux kernel with an explicit preferred source address:

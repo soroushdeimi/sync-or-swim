@@ -1,0 +1,18 @@
+---
+- name: Render the firewall ruleset
+  ansible.builtin.template:
+    src: firewall.nft.j2
+    dest: /etc/sos/firewall.nft
+    mode: "0644"
+    # a syntax error must never reach the node
+    validate: nft -c -f %s
+  notify: Apply the firewall
+
+- name: Render the firewall init script
+  ansible.builtin.template:
+    src: 05-firewall.sh.j2
+    dest: /etc/sos/init.d/05-firewall.sh
+    mode: "0755"
+
+- name: Apply pending firewall changes now
+  ansible.builtin.meta: flush_handlers

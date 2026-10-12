@@ -63,12 +63,13 @@ groups:
           runbook_url: "https://github.com/soroushdeimi/sync-or-swim/blob/main/docs/runbooks/PathHighPacketLoss.md"
 
       - alert: PathHighLatency
-        # the floor keeps sub-millisecond jitter from counting as "twice the average";
-        # a failed probe reports its timeout, which is not latency
+        # the floor keeps sub-millisecond jitter from counting as "twice the average".
+        # A failed probe reports its timeout as its duration, so neither the current value
+        # nor the baseline may include one: after an outage the average would hide real latency.
         expr: >-
           probe_duration_seconds > 0.02
-          and probe_duration_seconds > (2 * avg_over_time(probe_duration_seconds[1h]))
           and probe_success == 1
+          and probe_duration_seconds > (2 * avg_over_time((probe_duration_seconds and probe_success == 1)[1h:30s]))
         for: 1m
         labels:
           severity: warning

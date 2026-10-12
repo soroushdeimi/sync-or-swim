@@ -1,0 +1,4 @@
+---
+- name: Apply the firewall
+  ansible.builtin.command: nft -f /etc/sos/firewall.nft
+  changed_when: true

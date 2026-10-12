@@ -1,0 +1,60 @@
+# {{ ansible_managed }}
+{# local end of every tunnel on this node, with the peer's underlay address #}
+{% set local = [] %}
+{% for t in wg_tunnels %}
+{%   if t.a.host == inventory_hostname %}
+{%     set _ = local.append({'ifname': t.a.ifname, 'port': t.a.port, 'underlay': lab_networks[t.underlay].ifname, 'peer_ip': hostvars[t.b.host].lab_links[t.underlay], 'peer': t.b.host}) %}
+{%   elif t.b.host == inventory_hostname %}
+{%     set _ = local.append({'ifname': t.b.ifname, 'port': t.b.port, 'underlay': lab_networks[t.underlay].ifname, 'peer_ip': hostvars[t.a.host].lab_links[t.underlay], 'peer': t.a.host}) %}
+{%   endif %}
+{% endfor %}
+{% set wg_ifs = local | map(attribute='ifname') | unique | map('regex_replace', '^(.*)$', '"\\1"') | join(', ') %}
+{% set is_mysql = inventory_hostname in groups['mysql'] %}
+{% set ports = [exporter_ports.node, exporter_ports.frr, exporter_ports.wireguard] + ([exporter_ports.blackbox, exporter_ports.mysqld] if is_mysql else []) %}
+{% set trusted = [mgmt_services.prometheus, mgmt_gateway] %}
+
+table inet sos_fw
+delete table inet sos_fw
+
+table inet sos_fw {
+  counter input_dropped { }
+  counter forward_dropped { }
+
+  chain input {
+    type filter hook input priority 0; policy drop;
+
+    iif lo accept
+    ct state established,related accept
+    ct state invalid drop
+    ip protocol icmp accept
+    meta l4proto ipv6-icmp accept
+
+    # WireGuard: only from the tunnel's own peer, on the underlay it uses
+{% for t in local %}
+    iifname "{{ t.underlay }}" ip saddr {{ t.peer_ip }} udp dport {{ t.port }} accept  # {{ t.ifname }} <-> {{ t.peer }}
+{% endfor %}
+
+    # routing: BGP and BFD only inside the tunnels
+    iifname { {{ wg_ifs }} } tcp dport 179 accept
+    iifname { {{ wg_ifs }} } udp dport { 3784, 3785, 4784 } accept
+{% if is_mysql %}
+
+    # replication: the peer's loopback only
+    ip saddr {{ hostvars[groups['mysql'] | reject('equalto', inventory_hostname) | first].loopback_ip }} tcp dport 3306 accept
+{% endif %}
+
+    # exporters: Prometheus and the Docker host only
+    iifname "{{ lab_networks.mgmt.ifname }}" ip saddr { {{ trusted | join(', ') }} } tcp dport { {{ ports | join(', ') }} } accept
+
+    counter name "input_dropped"
+  }
+
+  chain forward {
+    type filter hook forward priority 0; policy drop;
+{% if not is_mysql %}
+    # relays carry traffic between their tunnels; mysql nodes are never transit
+    iifname { {{ wg_ifs }} } oifname { {{ wg_ifs }} } accept
+{% endif %}
+    counter name "forward_dropped"
+  }
+}

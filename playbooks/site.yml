@@ -5,6 +5,8 @@
   roles:
     - lab_infra
 
+- name: Per-node firewall
+  ansible.builtin.import_playbook: firewall.yml
 - name: WireGuard tunnels
   ansible.builtin.import_playbook: wireguard.yml
 - name: Routing (FRR, BGP, BFD)

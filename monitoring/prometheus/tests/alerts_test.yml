@@ -259,3 +259,25 @@ tests:
       - eval_time: 65m
         alertname: PathHighLatency
         exp_alerts: []
+
+  # After an outage the hour's average is full of 5 s timeouts. Real latency afterwards
+  # must still alert: the baseline comes from successful probes only.
+  - interval: 1m
+    input_series:
+      - series: 'probe_duration_seconds{instance="mysql-1", path="wg-1"}'
+        values: '5+0x30 0.001+0x30 0.1+0x10'
+      - series: 'probe_success{instance="mysql-1", path="wg-1"}'
+        values: '0+0x30 1+0x40'
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: PathHighLatency
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: mysql-1
+              path: wg-1
+            exp_annotations:
+              summary: "High latency detected on path wg-1"
+              description: "Probe duration on path wg-1 is above 20 ms and more than twice its 1-hour average."
+              runbook_url: "https://github.com/soroushdeimi/sync-or-swim/blob/main/docs/runbooks/PathHighLatency.md"
+

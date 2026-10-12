@@ -1,0 +1,6 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# First init script: the rules are in place before any service starts.
+set -euo pipefail
+
+nft -f /etc/sos/firewall.nft
