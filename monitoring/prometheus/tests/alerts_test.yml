@@ -215,3 +215,47 @@ tests:
               summary: "BFD peer down on mysql-1"
               description: "BFD peer 10.10.21.1 on mysql-1 is down (state=0)."
               runbook_url: "https://github.com/soroushdeimi/sync-or-swim/blob/main/docs/runbooks/BFDPeerDown.md"
+
+  # PathHighLatency: 100 ms on a 1 ms baseline alerts
+  - interval: 1m
+    input_series:
+      - series: 'probe_duration_seconds{instance="mysql-1", path="wg-1"}'
+        values: '0.001+0x60 0.1+0x10'
+      - series: 'probe_success{instance="mysql-1", path="wg-1"}'
+        values: '1+0x70'
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: PathHighLatency
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: mysql-1
+              path: wg-1
+            exp_annotations:
+              summary: "High latency detected on path wg-1"
+              description: "Probe duration on path wg-1 is above 20 ms and more than twice its 1-hour average."
+              runbook_url: "https://github.com/soroushdeimi/sync-or-swim/blob/main/docs/runbooks/PathHighLatency.md"
+
+  # Jitter on a sub-millisecond path: 5 ms is five times the average but below the 20 ms floor
+  - interval: 1m
+    input_series:
+      - series: 'probe_duration_seconds{instance="mysql-1", path="wg-1"}'
+        values: '0.001+0x60 0.005+0x10'
+      - series: 'probe_success{instance="mysql-1", path="wg-1"}'
+        values: '1+0x70'
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: PathHighLatency
+        exp_alerts: []
+
+  # A failed probe reports its timeout (5 s); that is an outage, not latency
+  - interval: 1m
+    input_series:
+      - series: 'probe_duration_seconds{instance="mysql-1", path="wg-1"}'
+        values: '0.001+0x60 5+0x10'
+      - series: 'probe_success{instance="mysql-1", path="wg-1"}'
+        values: '1+0x60 0+0x10'
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: PathHighLatency
+        exp_alerts: []

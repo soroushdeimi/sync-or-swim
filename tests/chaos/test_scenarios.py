@@ -784,3 +784,34 @@ def test_alert_latency():
         inject=lambda: sh("mysql-1", "tc", "qdisc", "add", "dev", "ul-a", "root", "netem", "delay", "100ms"),
         restore=lambda: sh("mysql-1", "tc", "qdisc", "del", "dev", "ul-a", "root", check=False),
     )
+
+
+@pytest.mark.chaos
+def test_alert_route_flapping():
+    """Repeated failovers push sre_active_path past four changes in ten minutes and RouteFlapping fires.
+    It is the last alert test on purpose: the ten-minute window must be clean first, or it would fire vacuously."""
+    wait_alerts_clear({"RouteFlapping"}, 720)
+    start = time.time()
+    for cycle in range(4):
+        subprocess.run(["docker", "kill", "wg-1"], check=True, capture_output=True)
+        deadline = time.time() + 10
+        while route_dev() != "wg-via2":
+            assert time.time() < deadline, "no failover to wg-via2 after killing wg-1"
+            time.sleep(0.2)
+        subprocess.run(["docker", "start", "wg-1"], check=True, capture_output=True)
+        deadline = time.time() + 300
+        while route_dev() != "wg-via1":
+            assert time.time() < deadline, "traffic did not return to wg-via1 within 300 s"
+            time.sleep(1)
+        if "RouteFlapping" in firing_names():
+            break
+    fired_s = time.time() - start if "RouteFlapping" in firing_names() else wait_alerts({"RouteFlapping"}, 60) + (time.time() - start)
+    record_result(
+        scenario="10g. alerts: repeated failovers",
+        switch_s=None,
+        lost_pings=None,
+        failback_s=None,
+        seq_ok=True,
+        notes=f"RouteFlapping fired after {cycle + 1} failover/failback cycles ({fired_s:.0f}s); it stays active until the ten-minute window empties",
+    )
+

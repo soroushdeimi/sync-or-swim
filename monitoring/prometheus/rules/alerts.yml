@@ -63,13 +63,18 @@ groups:
           runbook_url: "https://github.com/soroushdeimi/sync-or-swim/blob/main/docs/runbooks/PathHighPacketLoss.md"
 
       - alert: PathHighLatency
-        expr: probe_duration_seconds > (2 * avg_over_time(probe_duration_seconds[1h]))
+        # the floor keeps sub-millisecond jitter from counting as "twice the average";
+        # a failed probe reports its timeout, which is not latency
+        expr: >-
+          probe_duration_seconds > 0.02
+          and probe_duration_seconds > (2 * avg_over_time(probe_duration_seconds[1h]))
+          and probe_success == 1
         for: 1m
         labels:
           severity: warning
         annotations:
           summary: "High latency detected on path {{ $labels.path }}"
-          description: "Probe duration on path {{ $labels.path }} is > 2x its 1-hour average."
+          description: "Probe duration on path {{ $labels.path }} is above 20 ms and more than twice its 1-hour average."
           runbook_url: "https://github.com/soroushdeimi/sync-or-swim/blob/main/docs/runbooks/PathHighLatency.md"
 
       - alert: RouteFlapping

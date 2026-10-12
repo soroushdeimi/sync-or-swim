@@ -1,7 +1,7 @@
 # Runbook: PathHighLatency
 
 ## Meaning
-Round-trip probe duration (`probe_duration_seconds`) on network path `{{ $labels.path }}` is greater than 2 times its historical 1-hour average.
+Round-trip probe duration (`probe_duration_seconds`) on network path `{{ $labels.path }}` is above 20 ms and more than 2 times its historical 1-hour average (the 20 ms floor keeps jitter on a sub-millisecond path from alerting; a failed probe never counts).
 
 ## Impact
 - Increased query latency for cross-site database transactions and synchronous replication tasks.

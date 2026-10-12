@@ -227,10 +227,16 @@ def test_replication_alert_fires_and_clears(thread, alert):
         time.sleep(3)
 
 
+# RouteFlapping counts path changes over ten minutes, so it stays active long after the
+# failover tests that cause it. It has its own chaos test.
+WINDOWED_ALERTS = {"RouteFlapping"}
+
+
 def active_alerts():
     # pending counts too: a rule that is wrong for healthy data spends its first `for:` pending
     _, body = http_get(f"http://{MGMT_SERVICES['prometheus']}:9090/api/v1/alerts")
-    return sorted({a["labels"]["alertname"] for a in json.loads(body)["data"]["alerts"]})
+    names = {a["labels"]["alertname"] for a in json.loads(body)["data"]["alerts"]}
+    return sorted(names - WINDOWED_ALERTS)
 
 
 def test_healthy_lab_has_no_active_alerts():
