@@ -26,14 +26,14 @@ bfd
 ```
 
 Evaluation of alternatives:
-1. **Aggressive timers (50 ms x 3 = 150 ms):** While theoretically faster, containerized environments running on shared Linux hosts experience occasional CPU scheduling latency or Docker I/O contention. 150 ms thresholds caused occasional false BFD drops during intensive Ansible container operations.
+1. **Aggressive timers (50 ms x 3 = 150 ms):** Not tried. On a host shared with Docker and Ansible work, one scheduling stall longer than 150 ms would drop a session for nothing. 900 ms leaves six times more room.
 2. **Conservative timers (1000 ms x 3 = 3000 ms):** Too slow; exceeds the target for sub-second failover.
-3. **300 ms x 3 (900 ms):** Provides the ideal balance. When a relay container freezes (`docker pause`), BFD detects the outage in ~0.95 s. In container crash scenarios (`docker kill`), the kernel tears down the socket immediately (0.21 s). Under normal load, 300 ms x 3 yields zero false positives.
+3. **300 ms x 3 (900 ms):** Detection in about one second. A frozen relay (`docker pause`) is caught in about 0.8 s and silently dropped packets in about 1 s ([results](../results.md)). A killed relay is faster, about 0.1 s, because the closing TCP session is noticed before BFD. `BFDPeerDown` never fires on a healthy lab, which a test checks.
 
 ## Consequences
 
 ### Positive
-- **Sub-second failover:** Path failure detected in under 1 second (0.95 s measured during control-plane freeze; 0.21 s during crash).
+- **About one second:** a hang is detected in 0.8 s and silent packet loss in about 1 s, a killed relay in about 0.1 s.
 - Robust against jitter: 3 dropped control packets required before declaring a peer dead, preventing spurious failovers during CPU spikes.
 - Lightweight: BFD control packets consume negligible network bandwidth over the WireGuard tunnels.
 

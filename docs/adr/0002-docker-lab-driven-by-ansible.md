@@ -27,7 +27,7 @@ Key architectural characteristics:
 
 Using Docker containers for network infrastructure introduces specific differences compared to hardware VMs:
 - **Shared Linux kernel:** WireGuard encryption and IP packet forwarding execute inside the host Linux kernel.
-- **`docker pause` vs `docker kill`:** As documented in `docs/notes.md`, `docker pause` freezes user-space processes (pausing `bgpd` and `bfdd`), but does **not** stop kernel-space forwarding. The paused container continues forwarding data-plane traffic until BFD detects control-plane loss (0.95 s). In contrast, `docker kill` halts both control and data planes immediately (0.21 s failover).
+- **`docker pause` vs `docker kill`:** As documented in `docs/notes.md`, `docker pause` freezes user-space processes (pausing `bgpd` and `bfdd`), but does **not** stop kernel-space forwarding. The paused container continues forwarding data-plane traffic until BFD detects control-plane loss (about 0.8 s). In contrast, `docker kill` halts both control and data planes (about 0.1 s, because the closing TCP session is noticed before BFD).
 - **Read-only `/proc/sys`:** Container network sysctls (`net.ipv4.ip_forward`, `rp_filter=2`, `fib_multipath_hash_policy=1`) cannot be modified via `sysctl -w` inside running unprivileged containers and must be set declaratively in the compose definition.
 
 ## Consequences

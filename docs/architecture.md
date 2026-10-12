@@ -136,11 +136,12 @@ When the primary relay container `wg-1` crashes or stops, failover occurs throug
 
 ### Detailed Sequence:
 1. **Physical Loss:** Primary relay `wg-1` terminates.
-2. **Failure Detection:**
-   - In a crash/kill scenario (`docker kill`), the local kernel receives ICMP port unreachable or socket reset immediately (measured at 0.21 s).
-   - In a frozen control-plane scenario (`docker pause`), BFD misses 3 consecutive packets (300 ms x 3) and drops the session at 0.95 s.
+2. **Failure Detection:** how fast depends on how the relay fails (times from [results.md](results.md)):
+   - `docker kill`, about 0.1 s: the kernel closes the dying `bgpd`'s TCP socket before the namespace is torn down, so the FIN or RST still crosses the tunnel and FRR logs `Peer closed the session`. This beats BFD, but a real power loss sends nothing, so it is not the general case.
+   - `docker pause`, about 0.8 s: nothing is closed and the kernel keeps forwarding, but BFD misses three packets (300 ms x 3) and FRR logs `Cease/BFD Down`.
+   - Packets silently dropped (an nftables rule), about 1 s: only BFD can see this. It is the number to quote for a failure that gives no notice.
 3. **Control-Plane Convergence:**
-   - `bfdd` notifies `bgpd` via internal zebra/bfd IPC.
+   - `bgpd` learns the session is gone, from the closed TCP session or from `bfdd`.
    - `bgpd` removes the routes advertised by `wg-1`.
    - The backup BGP route via `wg-2` (which was already maintained in the BGP RIB with `LOCAL_PREF 100`) is immediately selected.
 4. **FIB Programming:**
@@ -153,9 +154,9 @@ When the primary relay container `wg-1` crashes or stops, failover occurs throug
    - Replication proceeds with zero interrupted transactions and zero dropped connections.
 6. **Recovery / Failback:**
    - When `wg-1` recovers, WireGuard handshakes re-establish.
-   - BFD sessions establish, followed by BGP peering.
+   - BFD comes up, but `delayopen` holds the BGP session to `wg-1` back for 30 s, so a relay that is still unstable does not pull traffic back.
    - `wg-1` re-advertises peer routes with `LOCAL_PREF 200`.
-   - `mysql-1` and `mysql-2` switch FIB next-hops back to `wg-via1` (manual test measured failback in 1.6 s after container startup, or 6.7 s including container boot).
+   - `mysql-1` and `mysql-2` switch FIB next-hops back to `wg-via1` after that hold-down (measured 32 to 41 s, see [results.md](results.md)).
 
 ---
 

@@ -22,10 +22,13 @@ route:
       receiver: mailpit-default
 
 inhibit_rules:
+  # With every path down these are symptoms of the same outage (the replica's IO thread cannot
+  # connect, lag grows). MySQLUnreachable and ReplicationSQLStopped stay visible on purpose:
+  # they are failures of the database itself, which a network outage must not hide.
   - source_matchers:
       - alertname = AllPathsDown
     target_matchers:
-      - alertname =~ "BGPSessionDown|BFDPeerDown|PathHighPacketLoss|ReplicationIOStopped|ReplicationLagHigh|MySQLUnreachable"
+      - alertname =~ "BGPSessionDown|BFDPeerDown|PathHighPacketLoss|ReplicationIOStopped|ReplicationLagHigh"
     equal: []
   - source_matchers:
       - severity = critical

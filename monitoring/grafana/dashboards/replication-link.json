@@ -30,13 +30,28 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
+            "mode": "fixed",
+            "fixedColor": "#4a4f57"
           },
           "custom": {
             "fillOpacity": 70,
             "lineWidth": 1
           },
-          "mappings": []
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "standby",
+                  "color": "#4a4f57"
+                },
+                "1": {
+                  "text": "ACTIVE",
+                  "color": "green"
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
@@ -74,7 +89,7 @@
           "refId": "A"
         }
       ],
-      "title": "Active Path Timeline",
+      "title": "Active Path (green = carries traffic)",
       "type": "state-timeline"
     },
     {
@@ -306,12 +321,12 @@
             "type": "prometheus",
             "uid": "Prometheus"
           },
-          "expr": "probe_duration_seconds",
+          "expr": "probe_duration_seconds and probe_success == 1",
           "legendFormat": "{{ instance }} - {{ path }} ({{ target }})",
           "refId": "A"
         }
       ],
-      "title": "Probe Latency (RTT)",
+      "title": "Probe Latency (RTT, successful probes only)",
       "type": "timeseries"
     },
     {

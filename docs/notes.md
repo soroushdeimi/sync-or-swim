@@ -39,9 +39,9 @@ Real problems hit while building the lab. Each one is a candidate for a postmort
 
 ## 2026-10-10: `docker pause` is not a server crash
 
-- **Observation:** pausing wg-1 moved traffic to wg-2 in 0.95 s with no lost pings.
+- **Observation:** pausing wg-1 moved traffic to wg-2 in 0.95 s with no lost pings (first manual run; `make chaos` later measured about 0.8 s).
 - **Why:** pause freezes processes, but WireGuard and forwarding live in the kernel, so wg-1 kept forwarding. Only bgpd/bfdd froze, and BFD noticed.
-- **So:** `pause` simulates a control-plane hang. A real crash is `docker kill` (0.21 s to switch in a first run) or a blackholed path. The chaos suite covers both separately.
+- **So:** `pause` simulates a control-plane hang. A crash is `docker kill` (0.21 s in the first run, about 0.1 s later) or a blackholed path (about 1 s). `kill` is fastest because the dying `bgpd` closes its TCP session through the tunnel before the namespace goes; FRR logs `Peer closed the session`, while a pause shows `Cease/BFD Down`. The chaos suite covers both separately.
 
 ## 2026-10-10: route-flap prevention and delayed failback
 

@@ -20,8 +20,8 @@ services:
       - --storage.tsdb.path=/prometheus
       - --web.enable-lifecycle
     volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./prometheus/rules:/etc/prometheus/rules:ro
+      # mount the directory: Ansible replaces files, and a single-file mount keeps the old inode
+      - ./prometheus:/etc/prometheus:ro
       - prometheus_data:/prometheus
     ports:
       - "127.0.0.1:9090:9090"
@@ -38,7 +38,7 @@ services:
       - --config.file=/etc/alertmanager/alertmanager.yml
       - --storage.path=/alertmanager
     volumes:
-      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./alertmanager:/etc/alertmanager:ro
     ports:
       - "127.0.0.1:9093:9093"
     networks:

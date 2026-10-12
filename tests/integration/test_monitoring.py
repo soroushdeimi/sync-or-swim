@@ -63,41 +63,34 @@ def test_alertmanager_ready():
     assert code == 200
 
 
-def test_alertmanager_inhibition():
+# What AllPathsDown may hide: symptoms of the network being down. A failure of the database
+# itself, or of something unrelated to the paths, must still page during a network outage.
+INHIBITED_BY_ALL_PATHS_DOWN = ["BGPSessionDown", "BFDPeerDown", "PathHighPacketLoss", "ReplicationIOStopped", "ReplicationLagHigh"]
+NOT_INHIBITED = ["MySQLUnreachable", "ReplicationSQLStopped", "ExporterDown", "WireGuardHandshakeStale", "TrafficOnBackupPath", "PathHighLatency"]
+
+
+def rule_severities():
+    rules = yaml.safe_load((pathlib.Path(__file__).parents[2] / "monitoring/prometheus/rules/alerts.yml").read_text())
+    return {r["alert"]: r["labels"]["severity"] for g in rules["groups"] for r in reversed(g["rules"])}
+
+
+def test_all_paths_down_hides_only_network_symptoms():
     ip = MGMT_SERVICES["alertmanager"]
     test_id = str(uuid.uuid4())
     now = datetime.datetime.now(datetime.timezone.utc)
-    future = now + datetime.timedelta(minutes=2)
     now_str = now.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-    future_str = future.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    future_str = (now + datetime.timedelta(minutes=2)).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    severities = rule_severities()
 
+    names = ["AllPathsDown"] + INHIBITED_BY_ALL_PATHS_DOWN + NOT_INHIBITED
     alerts = [
         {
-            "labels": {
-                "alertname": "AllPathsDown",
-                "severity": "critical",
-                "instance": "mysql-1",
-                "test_id": test_id,
-            },
-            "annotations": {
-                "summary": "Inhibition test AllPathsDown",
-            },
+            "labels": {"alertname": n, "severity": severities[n], "instance": "mysql-1", "test_id": test_id},
+            "annotations": {"summary": f"Inhibition test {n}"},
             "startsAt": now_str,
             "endsAt": future_str,
-        },
-        {
-            "labels": {
-                "alertname": "BGPSessionDown",
-                "severity": "warning",
-                "instance": "mysql-1",
-                "test_id": test_id,
-            },
-            "annotations": {
-                "summary": "Inhibition test BGPSessionDown",
-            },
-            "startsAt": now_str,
-            "endsAt": future_str,
-        },
+        }
+        for n in names
     ]
 
     try:
@@ -107,26 +100,19 @@ def test_alertmanager_inhibition():
         filter_param = urllib.parse.quote(f'test_id="{test_id}"')
         code, body = http_get(f"http://{ip}:9093/api/v2/alerts?filter={filter_param}")
         assert code == 200
-        active_alerts = json.loads(body)
-        alerts_by_name = {a["labels"]["alertname"]: a for a in active_alerts}
+        by_name = {a["labels"]["alertname"]: a for a in json.loads(body)}
 
-        assert "AllPathsDown" in alerts_by_name
-        assert alerts_by_name["AllPathsDown"]["status"]["state"] == "active"
-
-        assert "BGPSessionDown" in alerts_by_name
-        inhibited_by = alerts_by_name["BGPSessionDown"]["status"].get("inhibitedBy", [])
-        assert len(inhibited_by) > 0
+        assert by_name["AllPathsDown"]["status"]["state"] == "active"
+        wrongly_visible = [n for n in INHIBITED_BY_ALL_PATHS_DOWN if not by_name[n]["status"].get("inhibitedBy")]
+        wrongly_hidden = [n for n in NOT_INHIBITED if by_name[n]["status"].get("inhibitedBy")]
+        assert not wrongly_visible, f"AllPathsDown should hide these but does not: {wrongly_visible}"
+        assert not wrongly_hidden, f"AllPathsDown must not hide these: {wrongly_hidden}"
     finally:
-        resolved_alerts = [
-            {
-                "labels": a["labels"],
-                "annotations": a["annotations"],
-                "startsAt": a["startsAt"],
-                "endsAt": now_str,
-            }
+        resolved = [
+            {"labels": a["labels"], "annotations": a["annotations"], "startsAt": a["startsAt"], "endsAt": now_str}
             for a in alerts
         ]
-        http_post_json(f"http://{ip}:9093/api/v2/alerts", resolved_alerts)
+        http_post_json(f"http://{ip}:9093/api/v2/alerts", resolved)
 
 
 def test_grafana_health_and_dashboard():
@@ -246,3 +232,22 @@ def test_healthy_lab_has_no_active_alerts():
     while active_alerts():
         assert time.time() < deadline, f"alerts still active on a healthy lab: {active_alerts()}"
         time.sleep(5)
+
+
+def normalized_inhibit_rules(config):
+    # Alertmanager reports matchers re-quoted and drops an empty `equal`
+    clean = lambda matchers: [re.sub(r'[ "]', "", m) for m in matchers]
+    return [
+        {"source": clean(r["source_matchers"]), "target": clean(r["target_matchers"]), "equal": r.get("equal", [])}
+        for r in config["inhibit_rules"]
+    ]
+
+
+def test_alertmanager_runs_the_config_that_was_rendered():
+    # a single-file bind mount keeps serving the old file after Ansible replaces it, and a
+    # reload then reports success while nothing changed. Compare what Alertmanager holds.
+    rendered = yaml.safe_load((pathlib.Path(__file__).parents[2] / "build/monitoring/alertmanager/alertmanager.yml").read_text())
+    _, body = http_get(f"http://{MGMT_SERVICES['alertmanager']}:9093/api/v2/status")
+    loaded = yaml.safe_load(json.loads(body)["config"]["original"])
+    assert normalized_inhibit_rules(loaded) == normalized_inhibit_rules(rendered)
+    assert [r["name"] for r in loaded["receivers"]] == [r["name"] for r in rendered["receivers"]]
