@@ -1,7 +1,7 @@
 # Runbook: ReplicationIOStopped
 
 ## Meaning
-The MySQL replication I/O receiver thread on replica `{{ $labels.instance }}` is stopped (`mysql_slave_status_slave_io_running == 0`). The replica is not fetching binary log events from the primary.
+The MySQL replication I/O receiver thread on replica `{{ $labels.instance }}` is stopped (`mysql_slave_status_replica_io_running == 0`). The replica is not fetching binary log events from the primary.
 
 ## Impact
 - **CRITICAL:** Replication is halted.

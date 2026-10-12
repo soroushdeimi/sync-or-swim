@@ -1,7 +1,7 @@
 # Runbook: ReplicationSQLStopped
 
 ## Meaning
-The MySQL replication SQL applier thread on replica `{{ $labels.instance }}` is stopped (`mysql_slave_status_slave_sql_running == 0`). The replica is receiving binary log events but cannot execute them against the local dataset.
+The MySQL replication SQL applier thread on replica `{{ $labels.instance }}` is stopped (`mysql_slave_status_replica_sql_running == 0`). The replica is receiving binary log events but cannot execute them against the local dataset.
 
 ## Impact
 - **CRITICAL:** Replica dataset diverges from primary.

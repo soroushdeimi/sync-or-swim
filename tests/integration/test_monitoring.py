@@ -1,6 +1,9 @@
 import datetime
 import json
 import pathlib
+import re
+import subprocess
+import time
 import urllib.error
 import urllib.request
 import uuid
@@ -166,3 +169,59 @@ def test_scrape_targets_up():
         pytest.fail(
             f"Exporters pending deployment or down: {len(down_targets)}/{len(active_targets)} targets down (e.g. {down_targets[:3]})"
         )
+
+
+METRIC = re.compile(r"\b((?:frr|wireguard|mysql|probe|sre|node)_[a-z0-9_]+)")
+
+
+def iter_panels(panels):
+    for panel in panels:
+        yield panel
+        yield from iter_panels(panel.get("panels", []))
+
+
+def referenced_metrics():
+    root = pathlib.Path(__file__).parents[2]
+    rules = yaml.safe_load((root / "monitoring/prometheus/rules/alerts.yml").read_text())
+    exprs = [r["expr"] for g in rules["groups"] for r in g["rules"]]
+    dashboard = json.loads((root / "monitoring/grafana/dashboards/replication-link.json").read_text())
+    exprs += [t["expr"] for p in iter_panels(dashboard["panels"]) for t in p.get("targets", []) if "expr" in t]
+    return sorted({m for e in exprs for m in METRIC.findall(e)})
+
+
+@pytest.mark.parametrize("name", referenced_metrics())
+def test_alert_and_dashboard_metrics_have_data(name):
+    # a rule on a metric that has no samples never fires and never errors
+    code, body = http_get(f"http://{MGMT_SERVICES['prometheus']}:9090/api/v1/label/__name__/values")
+    assert code == 200
+    assert name in json.loads(body)["data"], f"{name} is used by an alert or the dashboard but Prometheus has no samples for it"
+
+
+def replica_sql(statement):
+    subprocess.run(
+        ["docker", "exec", "mysql-2-db", "sh", "-c", 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot -e "$0"', statement],
+        check=True, capture_output=True,
+    )
+
+
+def firing_alerts():
+    _, body = http_get(f"http://{MGMT_SERVICES['prometheus']}:9090/api/v1/alerts")
+    return {a["labels"]["alertname"] for a in json.loads(body)["data"]["alerts"] if a["state"] == "firing"}
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("thread,alert", [("IO_THREAD", "ReplicationIOStopped"), ("SQL_THREAD", "ReplicationSQLStopped")])
+def test_replication_alert_fires_and_clears(thread, alert):
+    assert alert not in firing_alerts(), f"{alert} already firing before the test"
+    try:
+        replica_sql(f"STOP REPLICA {thread}")
+        deadline = time.time() + 120
+        while alert not in firing_alerts():
+            assert time.time() < deadline, f"{alert} did not fire within 120 s of stopping the {thread}"
+            time.sleep(3)
+    finally:
+        replica_sql(f"START REPLICA {thread}")
+    deadline = time.time() + 120
+    while alert in firing_alerts():
+        assert time.time() < deadline, f"{alert} kept firing 120 s after the {thread} was started again"
+        time.sleep(3)

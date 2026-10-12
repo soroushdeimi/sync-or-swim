@@ -59,7 +59,10 @@ def test_frr_exporter_exposes_frr_bgp(name, ip):
 def test_wireguard_exporter_exposes_handshake(name, ip):
     status, body = fetch(f"http://{ip}:9586/metrics")
     assert status == 200
-    assert "wireguard_latest_handshake_seconds" in body
+    # the HELP line alone is not data: wg needs real access to the interfaces
+    samples = [l for l in body.splitlines() if l.startswith("wireguard_latest_handshake_seconds{")]
+    assert samples, "no handshake samples: the exporter cannot read the WireGuard interfaces"
+    assert all(float(l.rsplit(" ", 1)[1]) > 0 for l in samples), "a peer has never completed a handshake"
 
 
 @pytest.mark.parametrize("name,ip", MYSQL_NODES.items())

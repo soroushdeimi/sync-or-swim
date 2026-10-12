@@ -539,7 +539,7 @@
             "type": "prometheus",
             "uid": "Prometheus"
           },
-          "expr": "mysql_slave_status_slave_io_running",
+          "expr": "mysql_slave_status_replica_io_running",
           "legendFormat": "{{ instance }} IO",
           "refId": "A"
         }
@@ -601,7 +601,7 @@
             "type": "prometheus",
             "uid": "Prometheus"
           },
-          "expr": "mysql_slave_status_slave_sql_running",
+          "expr": "mysql_slave_status_replica_sql_running",
           "legendFormat": "{{ instance }} SQL",
           "refId": "A"
         }

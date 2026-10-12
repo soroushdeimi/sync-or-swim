@@ -68,7 +68,7 @@ tests:
   # Test ReplicationIOStopped alert
   - interval: 1m
     input_series:
-      - series: 'mysql_slave_status_slave_io_running{instance="mysql-2"}'
+      - series: 'mysql_slave_status_replica_io_running{instance="mysql-2"}'
         values: '0+0x5'
     alert_rule_test:
       - eval_time: 1m

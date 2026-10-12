@@ -22,3 +22,4 @@ Every postmortem covers the following sections:
 - [2026-10-10: Sidecars orphaned in stale network namespace after node restart](2026-10-10-sidecar-network-namespace.md)
 - [2026-10-10: Route monitor log test false-green and MySQL password leak in test argv](2026-10-10-log-test-false-green-and-password-leak.md)
 - [2026-10-10: GitHub CI failures on clean runner (JSON callback, Docker < 28.1, restart race)](2026-10-10-ci-clean-machine-failures.md)
+- [2026-10-12: Alerts on metrics that never had data](2026-10-12-alerts-on-metrics-that-did-not-exist.md)

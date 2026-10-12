@@ -38,6 +38,8 @@ services:
     image: {{ exporters_wireguard_image }}
     restart: unless-stopped
     network_mode: "container:{{ node }}"
+    # wg only gets CAP_NET_ADMIN as root; the image's own user would see no interfaces
+    user: "0:0"
     cap_add:
       - NET_ADMIN
     labels:

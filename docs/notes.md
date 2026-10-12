@@ -48,3 +48,10 @@ Real problems hit while building the lab. Each one is a candidate for a postmort
 - **Problem:** on degraded paths (scenario 4, 30% packet loss on wg-1), active path bounced 15 times in 60 s with 265 lost pings due to instant BFD recovery and failback.
 - **Fix:** configure `neighbor timers delayopen 30` toward the primary relay (hold down recovered sessions for 30 s) and address-family `bgp dampening 1 750 2000 4` to suppress flapping prefixes.
 - **Result:** degraded path changes dropped from 15 to 1; ping loss dropped from 265 to 7. Failover remains fast (< 1.5 s), while failback is held stable for ~31-41 s across failure scenarios.
+
+## 2026-10-12: three alerts could never fire
+
+- **Symptom:** none; that was the problem. Replication and WireGuard alerts were green because their metrics had no samples.
+- **Cause:** `slave` instead of `replica` in two metric names, and a WireGuard exporter running as a user without CAP_NET_ADMIN.
+- **Fix:** names corrected, exporter runs as root, and tests that check every referenced metric has data and that the replication alerts really fire and clear. See the postmortem.
+
